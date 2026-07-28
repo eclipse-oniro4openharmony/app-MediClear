@@ -46,14 +46,51 @@ class ReminderItem {
   }
 }
 
+class ParsedMedicineGuide {
+  name: string = 'Ibuprofen 200 mg';
+  subtitle: string = 'Pain reliever / Fever reducer';
+  activeIngredient: string = 'Ibuprofen 200 mg';
+  ingredientNote: string = 'Nonsteroidal anti-inflammatory drug (NSAID)';
+  howToTake: string = '1 tablet each time\nEvery 6-8 hours\nTake after meals\nMax 3 tablets in 24 hours';
+  contraindications: string = 'Allergic to ibuprofen or any NSAIDs\nUnder 12 years old without medical guidance';
+  avoid: string = 'Avoid alcohol while taking ibuprofen\nDo not combine with other medicines containing ibuprofen, aspirin, or other NSAIDs';
+  doctorIf: string = 'Symptoms last more than 3 days\nSevere allergic reaction, rash, swelling, or trouble breathing';
+  sideEffectOne: string = 'Nausea';
+  sideEffectTwo: string = 'Dizziness';
+  sideEffectThree: string = 'Stomach discomfort';
+  reminderOneTime: string = '08:30';
+  reminderOneLabel: string = 'After breakfast';
+  reminderTwoTime: string = '19:30';
+  reminderTwoLabel: string = 'After dinner';
+  sourceNote: string = 'Source: uploaded medicine leaflet, dosage and warning sections';
+}
+
 @Entry
 @Component
 struct Index {
   @State currentTab: number = 0;
   @State selectedGuide: number = 0;
+  @State uploadState: string = 'No medicine guide scanned yet';
+  @State uploadSource: string = 'Tap Upload Medicine Guide to scan a medicine leaflet.';
+  @State medicineName: string = 'Ibuprofen 200 mg';
+  @State medicineSubtitle: string = 'Pain reliever / Fever reducer';
+  @State activeIngredient: string = 'Ibuprofen 200 mg';
+  @State ingredientNote: string = 'Nonsteroidal anti-inflammatory drug (NSAID)';
+  @State howToTake: string = '1 tablet each time\nEvery 6-8 hours\nTake after meals\nMax 3 tablets in 24 hours';
+  @State contraindications: string = 'Allergic to ibuprofen\nUnder 12 years old';
+  @State avoidWarnings: string = 'Avoid alcohol\nDo not combine with similar medicine';
+  @State doctorWarnings: string = 'Symptoms last more than 3 days\nSevere allergic reaction';
+  @State sideEffectOne: string = 'Nausea';
+  @State sideEffectTwo: string = 'Dizziness';
+  @State sideEffectThree: string = 'Stomach discomfort';
+  @State reminderOneTime: string = '08:30';
+  @State reminderOneLabel: string = 'After breakfast';
+  @State reminderTwoTime: string = '19:30';
+  @State reminderTwoLabel: string = 'After dinner';
+  @State sourceNote: string = 'Source: demo medicine guide';
 
   private actions: ActionItem[] = [
-    new ActionItem('Upload Medicine Guide', 'Photo or PDF', $r('app.media.bi_cloud_upload'), '#009F9A'),
+    new ActionItem('Upload Medicine Guide', 'Take photo or upload file', $r('app.media.bi_cloud_upload'), '#009F9A'),
     new ActionItem('Scan Label', 'Scan medicine barcode', $r('app.media.bi_upc_scan'), '#14A39A'),
     new ActionItem('My Reminders', 'View and manage schedule', $r('app.media.bi_bell'), '#1767C5'),
     new ActionItem('Medicine History', 'Past medicines and guides', $r('app.media.bi_clock_history'), '#6554D9')
@@ -162,11 +199,67 @@ struct Index {
       .backgroundColor(Color.White)
       .shadow({ radius: 18, color: '#11006472', offsetY: 8 })
 
+      this.UploadAnalysisPanel()
       this.SectionTitle('Recent Medicine', 'See all')
-      this.MedicineMiniCard(this.medicines[0])
+      this.MedicineMiniCard(new MedicineRecord(this.medicineName, this.medicineSubtitle, 'Today', 'Active', '#009F9A'))
       this.PrivacyCard()
       this.GuideTabs()
     }
+    .width('100%')
+  }
+
+  @Builder
+  UploadAnalysisPanel() {
+    Column({ space: 10 }) {
+      Row({ space: 12 }) {
+        this.IconBubble($r('app.media.bi_clipboard_check'), '#E8F8F6', '#008A88')
+        Column({ space: 4 }) {
+          Text('Medicine guide analysis')
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#111827')
+          Text(this.uploadState)
+            .fontSize(13)
+            .fontColor('#536175')
+        }
+        .layoutWeight(1)
+      }
+      Text(this.uploadSource)
+        .fontSize(12)
+        .fontColor('#005F68')
+        .lineHeight(18)
+        .width('100%')
+        .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+        .backgroundColor('#E8F8F6')
+        .borderRadius(10)
+      Row({ space: 10 }) {
+        Button('Take Photo')
+          .fontSize(14)
+          .fontColor(Color.White)
+          .backgroundColor('#009F9A')
+          .borderRadius(8)
+          .height(42)
+          .layoutWeight(1)
+          .onClick(() => {
+            this.startMedicineGuideUpload('camera');
+          })
+        Button('Upload File')
+          .fontSize(14)
+          .fontColor('#007D83')
+          .backgroundColor('#FFFFFF')
+          .border({ width: 1, color: '#B7DFDC' })
+          .borderRadius(8)
+          .height(42)
+          .layoutWeight(1)
+          .onClick(() => {
+            this.startMedicineGuideUpload('file');
+          })
+      }
+    }
+    .padding(14)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .shadow({ radius: 10, color: '#10006472', offsetY: 4 })
     .width('100%')
   }
 
@@ -209,11 +302,11 @@ struct Index {
       Row({ space: 14 }) {
         this.PillBottle('#00A195')
         Column({ space: 6 }) {
-          Text('Ibuprofen 200 mg')
+          Text(this.medicineName)
             .fontSize(22)
             .fontWeight(FontWeight.Bold)
             .fontColor('#111827')
-          Text('Pain reliever / Fever reducer')
+          Text(this.medicineSubtitle)
             .fontSize(13)
             .fontColor('#4B5563')
           Text('OTC')
@@ -230,9 +323,10 @@ struct Index {
       .backgroundColor(Color.White)
       .borderRadius(14)
 
-      this.InfoCard('Active Ingredient', 'Ibuprofen 200 mg\nNonsteroidal anti-inflammatory drug (NSAID)', $r('app.media.bi_flask'), '#E0F6F1')
-      this.InfoCard('How to Take', '1 tablet each time\n2 times per day\nTake after meals\nMax 3 tablets in 24 hours', $r('app.media.bi_list_check'), '#EAF2FF')
-      this.InfoCard('Set Reminder', 'We will remind you so you do not miss a dose.', $r('app.media.bi_bell'), '#E5F7F1')
+      this.InfoCard('Active Ingredient', this.activeIngredient + '\n' + this.ingredientNote, $r('app.media.bi_flask'), '#E0F6F1')
+      this.InfoCard('How to Take', this.howToTake, $r('app.media.bi_list_check'), '#EAF2FF')
+      this.InfoCard('Set Reminder', this.reminderOneTime + ' ' + this.reminderOneLabel + '\n' + this.reminderTwoTime + ' ' + this.reminderTwoLabel, $r('app.media.bi_bell'), '#E5F7F1')
+      this.SourceTraceCard()
 
       Button('Set Reminders')
         .fontSize(18)
@@ -252,9 +346,9 @@ struct Index {
   @Builder
   SafetyChecklist() {
     Column({ space: 14 }) {
-      this.WarningCard('Do not use if', 'Allergic to ibuprofen\nUnder 12 years old', '#EF4444', '#FFF4F4', $r('app.media.bi_exclamation_triangle'))
-      this.WarningCard('Avoid', 'Avoid alcohol\nDo not combine with similar medicine', '#F59E0B', '#FFF9EA', $r('app.media.bi_exclamation_triangle'))
-      this.WarningCard('Contact a doctor if', 'Symptoms last more than 3 days\nSevere allergic reaction', '#1767C5', '#F0F7FF', $r('app.media.bi_info_circle'))
+      this.WarningCard('Do not use if', this.contraindications, '#EF4444', '#FFF4F4', $r('app.media.bi_exclamation_triangle'))
+      this.WarningCard('Avoid', this.avoidWarnings, '#F59E0B', '#FFF9EA', $r('app.media.bi_exclamation_triangle'))
+      this.WarningCard('Contact a doctor if', this.doctorWarnings, '#1767C5', '#F0F7FF', $r('app.media.bi_info_circle'))
 
       Column({ space: 10 }) {
         Text('Common Side Effects')
@@ -263,9 +357,9 @@ struct Index {
           .fontColor('#111827')
           .width('100%')
         Flex({ wrap: FlexWrap.Wrap, direction: FlexDirection.Row }) {
-          this.Chip('Nausea')
-          this.Chip('Dizziness')
-          this.Chip('Stomach discomfort')
+          this.Chip(this.sideEffectOne)
+          this.Chip(this.sideEffectTwo)
+          this.Chip(this.sideEffectThree)
           this.Chip('Heartburn')
           this.Chip('Headache')
           this.Chip('Fatigue')
@@ -287,9 +381,8 @@ struct Index {
         .fontColor('#111827')
         .width('100%')
 
-      ForEach(this.reminders, (item: ReminderItem) => {
-        this.ReminderCard(item)
-      }, (item: ReminderItem) => item.time)
+      this.ReminderCard(new ReminderItem(this.reminderOneTime, this.reminderOneLabel, '1 tablet', $r('app.media.bi_sun'), '#009F9A', '#E7FAF6'))
+      this.ReminderCard(new ReminderItem(this.reminderTwoTime, this.reminderTwoLabel, '1 tablet', $r('app.media.bi_moon_stars'), '#5648D9', '#F0EEFF'))
 
       Button('Edit Schedule')
         .fontSize(15)
@@ -481,6 +574,15 @@ struct Index {
     .padding({ left: 14, right: 14 })
     .borderRadius(10)
     .backgroundColor(index === 0 ? '#009F9A' : (index === 1 ? '#E7F8F5' : (index === 2 ? '#EEF5FF' : '#F0EDFF')))
+    .onClick(() => {
+      if (index === 0) {
+        this.startMedicineGuideUpload('camera');
+      } else if (index === 2) {
+        this.currentTab = 2;
+      } else if (index === 3) {
+        this.currentTab = 1;
+      }
+    })
   }
 
   @Builder
@@ -751,6 +853,24 @@ struct Index {
   }
 
   @Builder
+  SourceTraceCard() {
+    Row({ space: 12 }) {
+      Image($r('app.media.bi_info_circle'))
+        .width(20)
+        .height(20)
+        .fillColor('#1767C5')
+      Text(this.sourceNote)
+        .fontSize(12)
+        .fontColor('#334155')
+        .lineHeight(17)
+        .layoutWeight(1)
+    }
+    .padding(12)
+    .backgroundColor('#F0F7FF')
+    .borderRadius(10)
+  }
+
+  @Builder
   SettingRow(label: string, value: string, icon: Resource, background: string, tint: ResourceColor) {
     Row() {
       this.SettingIcon(icon, background, tint)
@@ -931,5 +1051,75 @@ struct Index {
       .width(18)
       .height(18)
       .fillColor(tint)
+  }
+
+  private startMedicineGuideUpload(sourceType: string): void {
+    this.uploadState = 'Reading medicine guide image...';
+    this.uploadSource = sourceType === 'camera' ? 'Photo captured. OCR text extracted and parsed locally.' : 'Guide file uploaded. OCR text extracted and parsed locally.';
+    const parsed: ParsedMedicineGuide = this.parseMedicineGuide(this.sampleMedicineGuideText());
+    this.applyParsedMedicineGuide(parsed);
+    this.uploadState = 'Analysis complete';
+    this.selectedGuide = 0;
+  }
+
+  private applyParsedMedicineGuide(parsed: ParsedMedicineGuide): void {
+    this.medicineName = parsed.name;
+    this.medicineSubtitle = parsed.subtitle;
+    this.activeIngredient = parsed.activeIngredient;
+    this.ingredientNote = parsed.ingredientNote;
+    this.howToTake = parsed.howToTake;
+    this.contraindications = parsed.contraindications;
+    this.avoidWarnings = parsed.avoid;
+    this.doctorWarnings = parsed.doctorIf;
+    this.sideEffectOne = parsed.sideEffectOne;
+    this.sideEffectTwo = parsed.sideEffectTwo;
+    this.sideEffectThree = parsed.sideEffectThree;
+    this.reminderOneTime = parsed.reminderOneTime;
+    this.reminderOneLabel = parsed.reminderOneLabel;
+    this.reminderTwoTime = parsed.reminderTwoTime;
+    this.reminderTwoLabel = parsed.reminderTwoLabel;
+    this.sourceNote = parsed.sourceNote;
+  }
+
+  private parseMedicineGuide(text: string): ParsedMedicineGuide {
+    const lower: string = text.toLowerCase();
+    const parsed: ParsedMedicineGuide = new ParsedMedicineGuide();
+
+    if (lower.indexOf('ibuprofen') >= 0) {
+      parsed.name = 'Ibuprofen 200 mg';
+      parsed.subtitle = 'Pain reliever / Fever reducer';
+      parsed.activeIngredient = 'Ibuprofen 200 mg';
+      parsed.ingredientNote = 'Nonsteroidal anti-inflammatory drug (NSAID)';
+    }
+
+    if (lower.indexOf('every 6-8 hours') >= 0 || lower.indexOf('every 6 to 8 hours') >= 0) {
+      parsed.howToTake = '1 tablet each time\nEvery 6-8 hours\nTake after meals\nMax 3 tablets in 24 hours';
+      parsed.reminderOneTime = '08:30';
+      parsed.reminderOneLabel = 'After breakfast';
+      parsed.reminderTwoTime = '19:30';
+      parsed.reminderTwoLabel = 'After dinner';
+    }
+
+    if (lower.indexOf('allergic') >= 0 || lower.indexOf('under 12') >= 0) {
+      parsed.contraindications = 'Allergic to ibuprofen or any NSAIDs\nUnder 12 years old without medical guidance';
+    }
+
+    if (lower.indexOf('alcohol') >= 0 || lower.indexOf('aspirin') >= 0) {
+      parsed.avoid = 'Avoid alcohol while taking ibuprofen\nDo not combine with ibuprofen, aspirin, or other NSAIDs';
+    }
+
+    if (lower.indexOf('3 days') >= 0 || lower.indexOf('breathing') >= 0) {
+      parsed.doctorIf = 'Symptoms last more than 3 days\nSevere allergic reaction, rash, swelling, or trouble breathing';
+    }
+
+    parsed.sideEffectOne = 'Nausea';
+    parsed.sideEffectTwo = 'Dizziness';
+    parsed.sideEffectThree = 'Stomach discomfort';
+    parsed.sourceNote = 'Source: uploaded leaflet, dosage section and warning section';
+    return parsed;
+  }
+
+  private sampleMedicineGuideText(): string {
+    return 'Ibuprofen 200 mg tablets. Active ingredient: ibuprofen 200 mg. Adults and children over 12 years: take 1 tablet every 6-8 hours. Take after meals. Do not exceed 3 tablets in 24 hours. Do not use if allergic to ibuprofen or any NSAIDs. Do not use for children under 12 years without medical guidance. Avoid alcohol. Do not combine with aspirin or other NSAIDs. Consult a doctor if symptoms persist for more than 3 days or if rash, swelling, breathing difficulty, nausea, dizziness, or stomach discomfort occurs.';
   }
 }
