@@ -91,7 +91,6 @@ struct Index {
 
   private actions: ActionItem[] = [
     new ActionItem('Upload Medicine Guide', 'Take photo or upload file', $r('app.media.bi_cloud_upload'), '#009F9A'),
-    new ActionItem('Scan Label', 'Scan medicine barcode', $r('app.media.bi_upc_scan'), '#14A39A'),
     new ActionItem('My Reminders', 'View and manage schedule', $r('app.media.bi_bell'), '#1767C5'),
     new ActionItem('Medicine History', 'Past medicines and guides', $r('app.media.bi_clock_history'), '#6554D9')
   ];
@@ -573,13 +572,13 @@ struct Index {
     .height(66)
     .padding({ left: 14, right: 14 })
     .borderRadius(10)
-    .backgroundColor(index === 0 ? '#009F9A' : (index === 1 ? '#E7F8F5' : (index === 2 ? '#EEF5FF' : '#F0EDFF')))
+    .backgroundColor(index === 0 ? '#009F9A' : (item.title === 'My Reminders' ? '#EEF5FF' : '#F0EDFF'))
     .onClick(() => {
-      if (index === 0) {
+      if (item.title === 'Upload Medicine Guide') {
         this.startMedicineGuideUpload('camera');
-      } else if (index === 2) {
+      } else if (item.title === 'My Reminders') {
         this.currentTab = 2;
-      } else if (index === 3) {
+      } else if (item.title === 'Medicine History') {
         this.currentTab = 1;
       }
     })
