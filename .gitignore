@@ -10,3 +10,5 @@
 /.clang-tidy
 **/.test
 /.appanalyzer
+/rpl-products.csv
+/data/rpl_cache.sqlite
