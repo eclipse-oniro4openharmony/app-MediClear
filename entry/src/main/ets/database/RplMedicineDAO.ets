@@ -26,6 +26,11 @@ export class RplMedicineDAO {
       return [];
     }
 
+    const brandCandidates = await this.searchBrandNameCandidates(terms);
+    if (brandCandidates.length > 0) {
+      return this.rankCandidates(brandCandidates, terms);
+    }
+
     const candidates: RplMedicineRecord[] = [];
     for (let index = 0; index < terms.length; index++) {
       const predicates = new relationalStore.RdbPredicates(MediClearDBConfig.RPL_TABLE.tableName);
@@ -38,6 +43,29 @@ export class RplMedicineDAO {
       this.appendUniqueRecords(candidates, records);
     }
 
+    return this.rankCandidates(candidates, terms);
+  }
+
+  private async searchBrandNameCandidates(terms: string[]): Promise<RplMedicineRecord[]> {
+    const candidates: RplMedicineRecord[] = [];
+    for (let index = 0; index < terms.length; index++) {
+      const term = terms[index];
+      if (!this.isLikelyBrandToken(term)) {
+        continue;
+      }
+      const predicates = new relationalStore.RdbPredicates(MediClearDBConfig.RPL_TABLE.tableName);
+      predicates.like('name', '%' + term + '%');
+      predicates.limitAs(20);
+
+      const resultSet = await this.store.query(predicates, MediClearDBConfig.RPL_TABLE.columns);
+      const records = resultSetToRplRecords(resultSet);
+      resultSet.close();
+      this.appendUniqueRecords(candidates, records);
+    }
+    return candidates;
+  }
+
+  private rankCandidates(candidates: RplMedicineRecord[], terms: string[]): RplMedicineRecord[] {
     const scored: RplScoredRecord[] = [];
     for (let index = 0; index < candidates.length; index++) {
       const score = this.scoreRecord(candidates[index], terms);
@@ -45,10 +73,14 @@ export class RplMedicineDAO {
         scored.push(new RplScoredRecord(candidates[index], score));
       }
     }
+    const hasDocumentCandidates = this.hasAnyDocumentCandidate(scored);
     scored.sort((left: RplScoredRecord, right: RplScoredRecord) => right.score - left.score);
 
     const matches: RplMedicineRecord[] = [];
-    for (let index = 0; index < scored.length && index < 10; index++) {
+    for (let index = 0; index < scored.length && matches.length < 10; index++) {
+      if (hasDocumentCandidates && !this.hasDocumentUrl(scored[index].record)) {
+        continue;
+      }
       matches.push(scored[index].record);
     }
     return matches;
@@ -170,7 +202,23 @@ export class RplMedicineDAO {
       genericScore = 12;
     }
     score = identityScore + packageScore + genericScore;
+    if (this.hasDocumentUrl(record)) {
+      score += 35;
+    }
     return score;
+  }
+
+  private hasAnyDocumentCandidate(scored: RplScoredRecord[]): boolean {
+    for (let index = 0; index < scored.length; index++) {
+      if (this.hasDocumentUrl(scored[index].record)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private hasDocumentUrl(record: RplMedicineRecord): boolean {
+    return record.leafletUrl.length > 0 || record.characteristicUrl.length > 0;
   }
 
   private fieldContainsToken(field: string, term: string): boolean {
@@ -182,5 +230,9 @@ export class RplMedicineDAO {
 
   private isLongNumericToken(term: string): boolean {
     return /^[0-9]{8,}$/.test(term);
+  }
+
+  private isLikelyBrandToken(term: string): boolean {
+    return /^[a-z][a-z0-9]{4,}$/.test(term) && !this.isStopWord(term) && !this.isNumericToken(term);
   }
 }
