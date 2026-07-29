@@ -194,9 +194,44 @@ Possible open-source components:
 - UI: ArkTS and ArkUI
 - Optional AI model: local model or self-hosted LLM
 
+### App Dependencies
+
+Install ArkTS dependencies before building the mobile app:
+
+```bash
+ohpm install --all
+```
+
+The Chat page uses `@luvi/lv-markdown-in` to render assistant answers that contain Markdown. If the dependency is missing, install it with:
+
+```bash
+ohpm install @luvi/lv-markdown-in
+```
+
+Build the HarmonyOS / OpenHarmony app from the project root:
+
+```bash
+oniro-app build
+```
+
 ### Backend Configuration
 
 The mobile app uses a separate Docker backend for PDF leaflet extraction and knowledge-base chunk storage.
+
+Start the backend from the `backend` folder:
+
+```bash
+cd backend
+docker compose up --build
+```
+
+For local Llama through Ollama, configure `backend/.env` like this:
+
+```text
+LLM_API_KEY=
+LLM_BASE_URL=http://host.docker.internal:11434/v1
+LLM_MODEL=llama3.2:3b
+```
 
 Current physical-phone backend URL:
 
@@ -209,6 +244,8 @@ The ArkTS config is in:
 ```text
 entry/src/main/ets/services/BackendConfig.ets
 ```
+
+Chat answers can include concise Markdown such as bold labels, bullet lists, and numbered steps. The ArkUI chat page renders assistant replies with `@luvi/lv-markdown-in`, while user messages remain normal text bubbles.
 
 For a physical phone, the phone and computer must be on the same Wi-Fi, and Windows Firewall must allow inbound traffic on port `18080`. Do not use `127.0.0.1` on a physical phone, because that points to the phone itself.
 
