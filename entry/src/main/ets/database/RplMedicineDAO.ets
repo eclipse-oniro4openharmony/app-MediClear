@@ -54,22 +54,27 @@ export class RplMedicineDAO {
     return matches;
   }
 
+  getDebugSearchTerms(ocrText: string): string {
+    const terms = this.extractSearchTerms(ocrText);
+    if (terms.length === 0) {
+      return 'No searchable terms extracted';
+    }
+
+    const preview: string[] = [];
+    for (let index = 0; index < terms.length && index < 20; index++) {
+      preview.push(terms[index]);
+    }
+    return preview.join(', ');
+  }
+
   private extractSearchTerms(text: string): string[] {
-    const normalized = text.toLowerCase()
-      .replace(',', ' ')
-      .replace('.', ' ')
-      .replace('-', ' ')
-      .replace('/', ' ')
-      .replace(':', ' ')
-      .replace(';', ' ')
-      .replace('(', ' ')
-      .replace(')', ' ');
+    const normalized = this.normalizeOcrText(text);
     const rawTokens = normalized.split(' ');
     const terms: string[] = [];
 
     for (let index = 0; index < rawTokens.length; index++) {
       const token = rawTokens[index].trim();
-      if (token.length < 2) {
+      if (token.length < 4 && !this.isNumericToken(token)) {
         continue;
       }
       if (this.isStopWord(token)) {
@@ -78,18 +83,39 @@ export class RplMedicineDAO {
       if (terms.indexOf(token) < 0) {
         terms.push(token);
       }
-      if (terms.length >= 24) {
+      if (terms.length >= 80) {
         break;
       }
     }
     return terms;
   }
 
+  private normalizeOcrText(text: string): string {
+    return text.toLowerCase()
+      .replace(/ą/g, 'a')
+      .replace(/ć/g, 'c')
+      .replace(/ę/g, 'e')
+      .replace(/ł/g, 'l')
+      .replace(/ń/g, 'n')
+      .replace(/ó/g, 'o')
+      .replace(/ś/g, 's')
+      .replace(/ź/g, 'z')
+      .replace(/ż/g, 'z')
+      .replace(/[^a-z0-9]+/g, ' ');
+  }
+
+  private isNumericToken(token: string): boolean {
+    return /^[0-9]+$/.test(token);
+  }
+
   private isStopWord(token: string): boolean {
-    return token === 'mg' || token === 'g' || token === 'ml' || token === 'lek' || token === 'oraz' ||
-      token === 'tabletki' || token === 'kapsulki' || token === 'capsules' || token === 'tablets' ||
+    return token === 'mg' || token === 'g' || token === 'ml' || token === 'mcg' || token === 'lek' || token === 'oraz' ||
+      token === 'tabletki' || token === 'kapsulki' || token === 'kapsulek' || token === 'capsules' || token === 'tablets' ||
       token === 'ulotka' || token === 'pacjenta' || token === 'dawka' || token === 'dla' ||
-      token === 'and' || token === 'the' || token === 'for' || token === 'with';
+      token === 'and' || token === 'the' || token === 'for' || token === 'with' || token === 'pl' ||
+      token === 'www' || token === 'com' || token === 'nr' || token === 'lot' || token === 'exp' ||
+      token === 'medium' || token === 'task' || token === 'chatgpt' || token === 'berlin' ||
+      token === 'chemie' || token === 'menarini' || token === 'przeciw' || token === 'wzdeciom';
   }
 
   private appendUniqueRecords(target: RplMedicineRecord[], records: RplMedicineRecord[]): void {
@@ -115,20 +141,46 @@ export class RplMedicineDAO {
     const commonName = record.commonName.toLowerCase();
     const activeSubstance = record.activeSubstance.toLowerCase();
     const strength = record.strength.toLowerCase();
+    const packageInfo = record.packageInfo.toLowerCase();
     let score = 0;
+    let identityScore = 0;
+    let packageScore = 0;
+    let genericScore = 0;
 
     for (let index = 0; index < terms.length; index++) {
       const term = terms[index];
-      if (name.indexOf(term) >= 0) {
-        score += 10;
-      } else if (commonName.indexOf(term) >= 0 || activeSubstance.indexOf(term) >= 0) {
-        score += 7;
+      if (this.fieldContainsToken(name, term)) {
+        identityScore += 60;
+      } else if (this.fieldContainsToken(commonName, term) || this.fieldContainsToken(activeSubstance, term)) {
+        identityScore += 40;
+      } else if (this.isLongNumericToken(term) && (packageInfo.indexOf(term) >= 0 || searchable.indexOf(term) >= 0)) {
+        packageScore += 45;
       } else if (strength.indexOf(term) >= 0) {
-        score += 4;
+        genericScore += 8;
       } else if (searchable.indexOf(term) >= 0) {
-        score += 2;
+        genericScore += 1;
       }
     }
+
+    if (identityScore === 0 && packageScore === 0) {
+      return 0;
+    }
+
+    if (genericScore > 12) {
+      genericScore = 12;
+    }
+    score = identityScore + packageScore + genericScore;
     return score;
+  }
+
+  private fieldContainsToken(field: string, term: string): boolean {
+    if (term.length < 4) {
+      return false;
+    }
+    return field.indexOf(term) >= 0;
+  }
+
+  private isLongNumericToken(term: string): boolean {
+    return /^[0-9]{8,}$/.test(term);
   }
 }
