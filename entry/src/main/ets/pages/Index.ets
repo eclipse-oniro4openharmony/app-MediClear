@@ -111,6 +111,7 @@ struct Index {
   @State productId: string = '';
   @State matchedKeywords: string = '';
   @State matchedPackage: string = '';
+  @State chatQuestion: string = '';
 
   private actions: ActionItem[] = [
     new ActionItem('Upload Medicine Guide', 'Take photo or upload file', $r('app.media.bi_cloud_upload'), '#009F9A'),
@@ -137,23 +138,27 @@ struct Index {
           this.Header()
         }
 
-        Scroll() {
-          Column({ space: 18 }) {
-            if (this.currentTab === 0) {
-              this.HomeView()
-            } else if (this.currentTab === 1) {
-              this.HistoryView()
-            } else if (this.currentTab === 2) {
-              this.ReminderView()
-            } else {
-              this.ProfileView()
+        if (this.currentTab === 3) {
+          this.ChatPage()
+        } else {
+          Scroll() {
+            Column({ space: 18 }) {
+              if (this.currentTab === 0) {
+                this.HomeView()
+              } else if (this.currentTab === 1) {
+                this.HistoryView()
+              } else if (this.currentTab === 2) {
+                this.ReminderView()
+              } else {
+                this.ProfileView()
+              }
             }
+            .padding({ left: 20, right: 20, top: this.currentTab === 0 ? 8 : 18, bottom: 92 })
+            .width('100%')
           }
-          .padding({ left: 20, right: 20, top: this.currentTab === 0 ? 8 : 18, bottom: 92 })
-          .width('100%')
+          .scrollBar(BarState.Off)
+          .layoutWeight(1)
         }
-        .scrollBar(BarState.Off)
-        .layoutWeight(1)
 
         this.TabBar()
       }
@@ -673,6 +678,221 @@ struct Index {
   }
 
   @Builder
+  ChatPage() {
+    Column() {
+      this.ChatTop()
+      Scroll() {
+        Column({ space: 16 }) {
+          this.ChatIntroCard()
+          this.ChatCurrentMedicineCard()
+          this.ChatPhotoCard()
+          this.ChatSuggestions()
+        }
+        .padding({ left: 20, right: 20, top: 12, bottom: 18 })
+        .width('100%')
+      }
+      .scrollBar(BarState.Off)
+      .layoutWeight(1)
+      Column() {
+        this.ChatInputBar()
+      }
+      .padding({ left: 20, right: 20, top: 10, bottom: 12 })
+      .backgroundColor('#F6FBFC')
+      .width('100%')
+    }
+    .width('100%')
+    .layoutWeight(1)
+  }
+
+  @Builder
+  ChatTop() {
+    Row() {
+      Row({ space: 10 }) {
+        this.LogoMark(34)
+        Text('MediClear')
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#0076B7')
+      }
+      .layoutWeight(1)
+      .alignItems(VerticalAlign.Center)
+      Stack() {
+        Text('New')
+          .fontSize(12)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#008A88')
+          .padding({ left: 10, right: 10, top: 5, bottom: 5 })
+          .backgroundColor('#DDF7F5')
+          .borderRadius(14)
+      }
+      .width(44)
+      .height(44)
+    }
+    .width('100%')
+    .height(64)
+    .padding({ left: 20, right: 20, top: 10, bottom: 8 })
+    .backgroundColor('#F6FBFC')
+  }
+
+  @Builder
+  ChatIntroCard() {
+    Row({ space: 12 }) {
+      Column({ space: 6 }) {
+        Text('Ask about this medicine')
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#1767C5')
+        Text('Get answers based on official leaflet.')
+          .fontSize(13)
+          .fontColor('#536175')
+      }
+      .layoutWeight(1)
+      Stack() {
+        Image($r('app.media.chat_robot_art'))
+          .width(76)
+          .height(76)
+          .objectFit(ImageFit.Contain)
+          .borderRadius(14)
+      }
+      .width(86)
+      .height(86)
+    }
+    .padding(16)
+    .backgroundColor('#EEF5FF')
+    .borderRadius(12)
+    .border({ width: 1, color: '#D8E7FF' })
+    .width('100%')
+  }
+
+  @Builder
+  ChatCurrentMedicineCard() {
+    Column({ space: 12 }) {
+      Text('Current Medicine')
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111827')
+        .width('100%')
+      Row({ space: 14 }) {
+        this.PillBottle('#00A195')
+        Column({ space: 4 }) {
+          Text(this.medicineName)
+            .fontSize(15)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#111827')
+          Text(this.medicineSubtitle)
+            .fontSize(12)
+            .fontColor('#536175')
+          Text(this.leafletUrl.length > 0 ? 'Source: Official Leaflet (RPL)' : 'Source: Local medicine guide')
+            .fontSize(12)
+            .fontColor('#294159')
+        }
+        .layoutWeight(1)
+      }
+    }
+    .padding(16)
+    .backgroundColor(Color.White)
+    .border({ width: 1, color: '#E3ECF2' })
+    .borderRadius(12)
+    .width('100%')
+  }
+
+  @Builder
+  ChatPhotoCard() {
+    Column({ space: 8 }) {
+      Text('Take a photo of your medicine')
+        .fontSize(15)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#0D5160')
+      Stack() {
+        Image($r('app.media.chat_camera_art'))
+          .width(76)
+          .height(76)
+          .objectFit(ImageFit.Contain)
+          .borderRadius(20)
+      }
+      .width(88)
+      .height(88)
+      .margin({ top: 6, bottom: 0 })
+      Text('Tap to take photo')
+        .fontSize(12)
+        .fontColor('#536175')
+    }
+    .height(168)
+    .justifyContent(FlexAlign.Center)
+    .padding(16)
+    .backgroundColor('#FFFFFF')
+    .border({ width: 1, color: '#DCEBED' })
+    .borderRadius(12)
+    .width('100%')
+    .onClick(() => {
+      this.takeMedicineGuidePhoto();
+    })
+  }
+
+  @Builder
+  ChatSuggestions() {
+    Column({ space: 10 }) {
+      Text('You can ask things like:')
+        .fontSize(13)
+        .fontColor('#445267')
+        .width('100%')
+      Flex({ wrap: FlexWrap.Wrap, direction: FlexDirection.Row }) {
+        this.ChatSuggestionChip('How should I take this?')
+        this.ChatSuggestionChip('What are the side effects?')
+        this.ChatSuggestionChip('Can I take this with other medicines?')
+      }
+    }
+    .width('100%')
+  }
+
+  @Builder
+  ChatSuggestionChip(label: string) {
+    Text(label)
+      .fontSize(13)
+      .fontWeight(FontWeight.Medium)
+      .fontColor('#1F4D9A')
+      .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+      .backgroundColor('#EEF5FF')
+      .borderRadius(16)
+      .margin({ right: 8, bottom: 8 })
+      .onClick(() => {
+        this.chatQuestion = label;
+      })
+  }
+
+  @Builder
+  ChatInputBar() {
+    Row({ space: 8 }) {
+      TextInput({ placeholder: 'Ask a question...', text: this.chatQuestion })
+        .fontSize(14)
+        .fontColor('#111827')
+        .placeholderColor('#7A8797')
+        .backgroundColor(Color.Transparent)
+        .layoutWeight(1)
+        .height(46)
+        .onChange((value: string) => {
+          this.chatQuestion = value;
+        })
+      Stack() {
+        Image($r('app.media.chat_send_art'))
+          .width(38)
+          .height(38)
+          .objectFit(ImageFit.Cover)
+          .borderRadius(19)
+      }
+      .width(44)
+      .height(44)
+      .borderRadius(22)
+    }
+    .height(54)
+    .padding({ left: 14, right: 5 })
+    .backgroundColor(Color.White)
+    .border({ width: 1, color: '#DCEBED' })
+    .borderRadius(18)
+    .width('100%')
+  }
+
+  @Builder
   ProfileView() {
     Column({ space: 16 }) {
       this.PageTop('Profile')
@@ -1173,7 +1393,8 @@ struct Index {
       this.TabButton('Home', 0, $r('app.media.bi_house_door'))
       this.TabButton('History', 1, $r('app.media.bi_clock_history'))
       this.TabButton('Reminders', 2, $r('app.media.bi_bell'))
-      this.TabButton('Profile', 3, $r('app.media.bi_person_heart'))
+      this.TabButton('Chat', 3, $r('app.media.bi_chat_dots'))
+      this.TabButton('Profile', 4, $r('app.media.bi_person_heart'))
     }
     .height(72)
     .width('100%')
@@ -1231,14 +1452,14 @@ struct Index {
   @Builder
   PillBottle(tint: string) {
     Stack() {
-      Image($r('app.media.bi_capsule_pill'))
-        .width(34)
-        .height(34)
-        .fillColor(tint)
+      Image($r('app.media.medicine_bottle_art'))
+        .width(58)
+        .height(58)
+        .objectFit(ImageFit.Cover)
+        .borderRadius(10)
     }
     .width(58)
     .height(58)
-    .backgroundColor('#F3F7F8')
     .borderRadius(10)
   }
 
