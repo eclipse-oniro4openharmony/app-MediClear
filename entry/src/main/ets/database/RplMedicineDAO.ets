@@ -181,8 +181,10 @@ export class RplMedicineDAO {
 
     for (let index = 0; index < terms.length; index++) {
       const term = terms[index];
-      if (this.fieldContainsToken(name, term)) {
-        identityScore += 60;
+      if (this.fieldStartsWithToken(name, term)) {
+        identityScore += 70;
+      } else if (this.fieldContainsToken(name, term)) {
+        identityScore += this.isLongDescriptiveName(name) ? 12 : 45;
       } else if (this.fieldContainsToken(commonName, term) || this.fieldContainsToken(activeSubstance, term)) {
         identityScore += 40;
       } else if (this.isLongNumericToken(term) && (packageInfo.indexOf(term) >= 0 || searchable.indexOf(term) >= 0)) {
@@ -226,6 +228,28 @@ export class RplMedicineDAO {
       return false;
     }
     return field.indexOf(term) >= 0;
+  }
+
+  private fieldStartsWithToken(field: string, term: string): boolean {
+    if (term.length < 4) {
+      return false;
+    }
+    const normalizedField = this.normalizeOcrText(field);
+    const tokens = normalizedField.split(' ');
+    for (let index = 0; index < tokens.length && index < 3; index++) {
+      if (tokens[index] === term) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private isLongDescriptiveName(name: string): boolean {
+    const normalized = this.normalizeOcrText(name);
+    return normalized.length > 55 ||
+      normalized.indexOf(' kazda ') >= 0 ||
+      normalized.indexOf(' zawiera ') >= 0 ||
+      normalized.indexOf(' substancje czynne ') >= 0;
   }
 
   private isLongNumericToken(term: string): boolean {
