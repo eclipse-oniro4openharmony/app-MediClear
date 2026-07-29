@@ -2,12 +2,15 @@ import argparse
 import csv
 import sqlite3
 import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 RPL_CSV_URL = "https://api.dane.gov.pl/resources/65520,wykaz-produktow-leczniczych-plik-w-formacie-csv/file"
+RPL_XML_URL = "https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/public-pl-report/6.0.0/overall.xml"
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CSV = ROOT / "rpl-products.csv"
+DEFAULT_XML = ROOT / "rpl-products.xml"
 DEFAULT_DB = ROOT / "data" / "rpl_seed.sqlite"
 
 
@@ -15,6 +18,12 @@ def download_csv(target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     print(f"Downloading RPL CSV -> {target}")
     urllib.request.urlretrieve(RPL_CSV_URL, target)
+
+
+def download_xml(target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Downloading RPL XML -> {target}")
+    urllib.request.urlretrieve(RPL_XML_URL, target)
 
 
 def connect_database(path: Path) -> sqlite3.Connection:
@@ -128,6 +137,111 @@ def import_csv(csv_path: Path, db_path: Path, keywords: list[str], limit: int) -
     return inserted
 
 
+def attr_any(element: ET.Element, names: list[str]) -> str:
+    for name in names:
+        value = element.attrib.get(name)
+        if value:
+            return value.strip()
+    return ""
+
+
+def children_text(element: ET.Element, tag_keywords: list[str]) -> str:
+    values: list[str] = []
+    for child in element.iter():
+        tag = child.tag.split("}")[-1].lower()
+        if any(keyword in tag for keyword in tag_keywords):
+            text = " ".join(part.strip() for part in child.itertext() if part.strip())
+            if text:
+                values.append(text)
+    return "\n".join(dict.fromkeys(values))
+
+
+def children_attrs_text(element: ET.Element, tag_name: str, attr_names: list[str]) -> str:
+    values: list[str] = []
+    for child in element.iter():
+        tag = child.tag.split("}")[-1]
+        if tag != tag_name:
+            continue
+        parts: list[str] = []
+        for attr_name in attr_names:
+            value = child.attrib.get(attr_name)
+            if value:
+                parts.append(value.strip())
+        if parts:
+            values.append(" | ".join(parts))
+    return "\n".join(dict.fromkeys(values))
+
+
+def is_product_node(element: ET.Element) -> bool:
+    return element.tag.split("}")[-1] == "produktLeczniczy"
+
+
+def import_xml(xml_path: Path, db_path: Path, keywords: list[str], limit: int) -> int:
+    conn = connect_database(db_path)
+    conn.execute("DELETE FROM rpl_products")
+
+    inserted = 0
+    for event, element in ET.iterparse(xml_path, events=("end",)):
+        if not is_product_node(element):
+            continue
+
+        values = {
+            "rpl_identifier": attr_any(element, ["id", "identyfikator", "identyfikatorProduktuLeczniczego"]),
+            "name": attr_any(element, ["nazwaProduktu", "nazwa", "nazwaProduktuLeczniczego", "produktLeczniczyNazwa"]),
+            "common_name": attr_any(element, ["nazwaPowszechnieStosowana", "nazwa_powszechnie_stosowana"]),
+            "medicine_type": attr_any(element, ["rodzajPreparatu", "rodzaj_preparatu"]),
+            "route": attr_any(element, ["drogaPodania", "droga_podania"]),
+            "strength": attr_any(element, ["moc"]),
+            "dosage_form": attr_any(element, ["nazwaPostaciFarmaceutycznej", "postac", "postać", "postacFarmaceutyczna", "postaćFarmaceutyczna"]),
+            "procedure_type": attr_any(element, ["typProcedury", "typ_procedury"]),
+            "permit_number": attr_any(element, ["numerPozwolenia", "pozwolenie"]),
+            "permit_validity": attr_any(element, ["waznoscPozwolenia", "ważnośćPozwolenia"]),
+            "atc_code": children_text(element, ["kodatc"]) or attr_any(element, ["kodATC", "atc"]),
+            "responsible_entity": attr_any(element, ["podmiotOdpowiedzialny"]),
+            "package_info": children_attrs_text(element, "opakowanie", ["kodGTIN", "kategoriaDostepnosci", "id"]),
+            "active_substance": children_attrs_text(element, "substancjaCzynna", ["nazwaSubstancji", "iloscSubstancji", "jednostkaMiaryIlosciSubstancji"]),
+            "manufacturer": children_attrs_text(element, "wytworcy", ["nazwaWytworcyImportera"]),
+            "manufacturer_country": children_attrs_text(element, "wytworcy", ["krajWytworcyImportera"]),
+            "leaflet_url": attr_any(element, ["ulotka"]),
+            "characteristic_url": attr_any(element, ["charakterystyka"]),
+            "parallel_leaflet_url": attr_any(element, ["ulotkaImportuRownoleglego", "ulotkaImportuRównoległego"]),
+            "source_date": attr_any(element, ["stanNaDzien", "data"]),
+        }
+        values["search_text"] = " ".join(str(value) for value in values.values()).lower()
+
+        if not values["name"] or not should_import(values, keywords):
+            element.clear()
+            continue
+
+        conn.execute(
+            """
+            INSERT INTO rpl_products (
+                rpl_identifier, name, common_name, medicine_type, route, strength,
+                dosage_form, procedure_type, permit_number, permit_validity, atc_code,
+                responsible_entity, package_info, active_substance, manufacturer,
+                manufacturer_country, leaflet_url, characteristic_url,
+                parallel_leaflet_url, source_date, search_text
+            ) VALUES (
+                :rpl_identifier, :name, :common_name, :medicine_type, :route, :strength,
+                :dosage_form, :procedure_type, :permit_number, :permit_validity, :atc_code,
+                :responsible_entity, :package_info, :active_substance, :manufacturer,
+                :manufacturer_country, :leaflet_url, :characteristic_url,
+                :parallel_leaflet_url, :source_date, :search_text
+            )
+            """,
+            values,
+        )
+        inserted += 1
+        element.clear()
+        if limit > 0 and inserted >= limit:
+            break
+
+    conn.commit()
+    conn.close()
+    print(f"Imported {inserted} rows -> {db_path}")
+    return inserted
+
+
 def search(db_path: Path, terms: list[str]) -> None:
     conn = connect_database(db_path)
     clauses = ["search_text LIKE ?" for _ in terms]
@@ -155,8 +269,10 @@ def search(db_path: Path, terms: list[str]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sync official Polish RPL medicine data into SQLite.")
     parser.add_argument("--csv", type=Path, default=DEFAULT_CSV)
+    parser.add_argument("--xml", type=Path, default=DEFAULT_XML)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--download", action="store_true")
+    parser.add_argument("--format", choices=["csv", "xml"], default="xml")
     parser.add_argument("--import", dest="do_import", action="store_true")
     parser.add_argument("--keyword", action="append", default=[])
     parser.add_argument("--limit", type=int, default=0)
@@ -164,9 +280,15 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.download:
-        download_csv(args.csv)
+        if args.format == "xml":
+            download_xml(args.xml)
+        else:
+            download_csv(args.csv)
     if args.do_import:
-        import_csv(args.csv, args.db, args.keyword, args.limit)
+        if args.format == "xml":
+            import_xml(args.xml, args.db, args.keyword, args.limit)
+        else:
+            import_csv(args.csv, args.db, args.keyword, args.limit)
     if args.search is not None:
         search(args.db, args.search)
 
