@@ -11,4 +11,6 @@
 **/.test
 /.appanalyzer
 /rpl-products.csv
+/rpl-products.xml
 /data/rpl_cache.sqlite
+/output/

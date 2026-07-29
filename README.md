@@ -194,6 +194,32 @@ Possible open-source components:
 - UI: ArkTS and ArkUI
 - Optional AI model: local model or self-hosted LLM
 
+### PaddleOCR API Tool
+
+The repository includes a helper script for extracting text from medicine package images, label photos, and PDFs using the PaddleOCR API.
+
+Install the Python dependency:
+
+```bash
+python -m pip install requests
+```
+
+Set the API token as an environment variable instead of committing it to source code:
+
+```powershell
+$env:PADDLEOCR_TOKEN="your-token"
+```
+
+Run OCR on a local file or public file URL:
+
+```bash
+python tools/paddleocr_extract.py "path/to/medicine-label.jpg"
+python tools/paddleocr_extract.py "path/to/leaflet.pdf"
+python tools/paddleocr_extract.py "https://example.com/leaflet.pdf"
+```
+
+The script writes page-level markdown, downloaded OCR images, raw JSONL, and a merged `combined.md` file under `output/paddleocr/`.
+
 ## Safety Boundary
 
 MediClear does not diagnose diseases, prescribe medicine, recommend medicine, or replace doctors or pharmacists.
