@@ -72,6 +72,8 @@ class ParsedMedicineGuide {
   leafletUrl: string = 'https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/2268/leaflet';
   characteristicUrl: string = 'https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/2268/characteristic';
   rplIdentifier: string = '100022688';
+  productId: string = '2268';
+  matchedKeywords: string = 'espumisan, simeticonum, 40 mg';
   matchedPackage: string = 'GTIN: 05909990168712 | OTC | Package: 25 capsules';
   sourceNote: string = 'Source: local RPL SQLite match, Espumisan 40 mg capsules';
 }
@@ -105,6 +107,8 @@ struct Index {
   @State leafletUrl: string = '';
   @State characteristicUrl: string = '';
   @State rplIdentifier: string = '';
+  @State productId: string = '';
+  @State matchedKeywords: string = '';
   @State matchedPackage: string = '';
 
   private actions: ActionItem[] = [
@@ -272,6 +276,9 @@ struct Index {
         .borderRadius(10)
         .width('100%')
       }
+      if (this.leafletUrl.length > 0) {
+        this.RplEndpointCard()
+      }
       Row({ space: 10 }) {
         Button('Take Photo')
           .fontSize(14)
@@ -294,9 +301,6 @@ struct Index {
           .onClick(() => {
             this.selectMedicineGuideFile();
           })
-      }
-      if (this.leafletUrl.length > 0) {
-        this.RplEndpointCard()
       }
     }
     .padding(14)
@@ -411,6 +415,16 @@ struct Index {
       Text('RPL identifier: ' + this.rplIdentifier)
         .fontSize(12)
         .fontColor('#334155')
+        .width('100%')
+      Text('Product ID: ' + this.productId)
+        .fontSize(12)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111827')
+        .width('100%')
+      Text('Matched keywords: ' + this.matchedKeywords)
+        .fontSize(12)
+        .fontColor('#334155')
+        .lineHeight(17)
         .width('100%')
       Text(this.matchedPackage)
         .fontSize(12)
@@ -1293,6 +1307,12 @@ struct Index {
     console.info('[MediClearOCR] picked sandboxPath=' + picked.sandboxPath);
     this.selectedGuideUri = picked.sandboxPath;
     this.extractedOcrText = '';
+    this.productId = '';
+    this.rplIdentifier = '';
+    this.matchedKeywords = '';
+    this.matchedPackage = '';
+    this.leafletUrl = '';
+    this.characteristicUrl = '';
     this.startMedicineGuideUpload(sourceType);
   }
 
@@ -1366,6 +1386,8 @@ struct Index {
     this.leafletUrl = parsed.leafletUrl;
     this.characteristicUrl = parsed.characteristicUrl;
     this.rplIdentifier = parsed.rplIdentifier;
+    this.productId = parsed.productId;
+    this.matchedKeywords = parsed.matchedKeywords;
     this.matchedPackage = parsed.matchedPackage;
   }
 
@@ -1409,6 +1431,8 @@ struct Index {
     parsed.leafletUrl = 'https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/2268/leaflet';
     parsed.characteristicUrl = 'https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/2268/characteristic';
     parsed.rplIdentifier = '100022688';
+    parsed.productId = '2268';
+    parsed.matchedKeywords = 'espumisan, simeticonum, 40 mg';
     parsed.matchedPackage = 'GTIN: 05909990168712 | OTC | Package: 25 capsules';
     parsed.sourceNote = 'Source: local RPL SQLite match, Espumisan 40 mg capsules. Product endpoint id: 2268.';
     return parsed;
@@ -1423,6 +1447,8 @@ struct Index {
     parsed.leafletUrl = record.leafletUrl;
     parsed.characteristicUrl = record.characteristicUrl;
     parsed.rplIdentifier = record.rplIdentifier;
+    parsed.productId = record.id.toString();
+    parsed.matchedKeywords = this.buildMatchedKeywords(this.extractedOcrText, record);
     parsed.matchedPackage = record.packageInfo;
     parsed.sourceNote = 'Source: local MediClear RDB match. RPL identifier: ' + record.rplIdentifier + '. Product endpoint id: ' + record.id.toString() + '.';
     if (matchedName.indexOf('espumisan') < 0) {
@@ -1436,6 +1462,28 @@ struct Index {
       parsed.reminderOneLabel = 'After plan confirmation';
       parsed.reminderTwoLabel = 'After plan confirmation';
     }
+  }
+
+  private buildMatchedKeywords(ocrText: string, record: RplMedicineRecord): string {
+    const normalizedOcr = ocrText.toLowerCase();
+    const tokens = record.searchText.toLowerCase().split(' ');
+    const matches: string[] = [];
+    for (let index = 0; index < tokens.length; index++) {
+      const token = tokens[index].trim();
+      if (token.length < 3) {
+        continue;
+      }
+      if (normalizedOcr.indexOf(token) >= 0 && matches.indexOf(token) < 0) {
+        matches.push(token);
+      }
+      if (matches.length >= 8) {
+        break;
+      }
+    }
+    if (matches.length === 0) {
+      return record.name + ', ' + record.commonName + ', ' + record.strength;
+    }
+    return matches.join(', ');
   }
 
   private sampleMedicineGuideText(): string {
