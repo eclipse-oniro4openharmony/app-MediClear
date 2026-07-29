@@ -1,3 +1,10 @@
+import { common } from '@kit.AbilityKit';
+import { MediClearDatabase } from '../database/MediClearDatabase';
+import { RplMedicineDAO } from '../database/RplMedicineDAO';
+import { RplMedicineRecord } from '../database/RplMedicineRecord';
+import { PaddleOcrService } from '../services/PaddleOcrService';
+import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
+
 class ActionItem {
   title: string;
   subtitle: string;
@@ -47,22 +54,26 @@ class ReminderItem {
 }
 
 class ParsedMedicineGuide {
-  name: string = 'Ibuprofen 200 mg';
-  subtitle: string = 'Pain reliever / Fever reducer';
-  activeIngredient: string = 'Ibuprofen 200 mg';
-  ingredientNote: string = 'Nonsteroidal anti-inflammatory drug (NSAID)';
-  howToTake: string = '1 tablet each time\nEvery 6-8 hours\nTake after meals\nMax 3 tablets in 24 hours';
-  contraindications: string = 'Allergic to ibuprofen or any NSAIDs\nUnder 12 years old without medical guidance';
-  avoid: string = 'Avoid alcohol while taking ibuprofen\nDo not combine with other medicines containing ibuprofen, aspirin, or other NSAIDs';
-  doctorIf: string = 'Symptoms last more than 3 days\nSevere allergic reaction, rash, swelling, or trouble breathing';
-  sideEffectOne: string = 'Nausea';
-  sideEffectTwo: string = 'Dizziness';
-  sideEffectThree: string = 'Stomach discomfort';
+  name: string = 'Espumisan';
+  subtitle: string = 'Anti-flatulence medicine';
+  activeIngredient: string = 'Simeticonum 40 mg';
+  ingredientNote: string = 'Each capsule contains 40 mg simethicone';
+  howToTake: string = '2 capsules each time\n3-4 times per day\nBefore, during, or after meals\nCan be taken before sleep if needed';
+  contraindications: string = 'Allergic to simethicone\nAllergic to E110, E218, or any excipient';
+  avoid: string = 'Consult a clinician if abdominal symptoms are new or persistent\nCheck excipients if you have allergy history';
+  doctorIf: string = 'New or persistent abdominal discomfort\nSuspected allergic reaction';
+  sideEffectOne: string = 'No known Espumisan-specific adverse reactions';
+  sideEffectTwo: string = 'E110 may cause allergic reactions';
+  sideEffectThree: string = 'E218 may cause delayed allergic reactions';
   reminderOneTime: string = '08:30';
-  reminderOneLabel: string = 'After breakfast';
+  reminderOneLabel: string = 'With breakfast';
   reminderTwoTime: string = '19:30';
-  reminderTwoLabel: string = 'After dinner';
-  sourceNote: string = 'Source: uploaded medicine leaflet, dosage and warning sections';
+  reminderTwoLabel: string = 'With dinner';
+  leafletUrl: string = 'https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/2268/leaflet';
+  characteristicUrl: string = 'https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/2268/characteristic';
+  rplIdentifier: string = '100022688';
+  matchedPackage: string = 'GTIN: 05909990168712 | OTC | Package: 25 capsules';
+  sourceNote: string = 'Source: local RPL SQLite match, Espumisan 40 mg capsules';
 }
 
 @Entry
@@ -70,8 +81,11 @@ class ParsedMedicineGuide {
 struct Index {
   @State currentTab: number = 0;
   @State selectedGuide: number = 0;
+  @State showUploadSheet: boolean = false;
   @State uploadState: string = 'No medicine guide scanned yet';
   @State uploadSource: string = 'Tap Upload Medicine Guide to scan a medicine leaflet.';
+  @State selectedGuideUri: string = '';
+  @State extractedOcrText: string = '';
   @State medicineName: string = 'Ibuprofen 200 mg';
   @State medicineSubtitle: string = 'Pain reliever / Fever reducer';
   @State activeIngredient: string = 'Ibuprofen 200 mg';
@@ -88,6 +102,10 @@ struct Index {
   @State reminderTwoTime: string = '19:30';
   @State reminderTwoLabel: string = 'After dinner';
   @State sourceNote: string = 'Source: demo medicine guide';
+  @State leafletUrl: string = '';
+  @State characteristicUrl: string = '';
+  @State rplIdentifier: string = '';
+  @State matchedPackage: string = '';
 
   private actions: ActionItem[] = [
     new ActionItem('Upload Medicine Guide', 'Take photo or upload file', $r('app.media.bi_cloud_upload'), '#009F9A'),
@@ -136,6 +154,10 @@ struct Index {
       }
       .width('100%')
       .height('100%')
+
+      if (this.showUploadSheet) {
+        this.UploadChoiceSheet()
+      }
     }
     .width('100%')
     .height('100%')
@@ -231,6 +253,25 @@ struct Index {
         .padding({ left: 12, right: 12, top: 10, bottom: 10 })
         .backgroundColor('#E8F8F6')
         .borderRadius(10)
+      if (this.extractedOcrText.length > 0) {
+        Column({ space: 6 }) {
+          Text('Extracted text')
+            .fontSize(13)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#111827')
+            .width('100%')
+          Text(this.extractedOcrText)
+            .fontSize(12)
+            .fontColor('#334155')
+            .lineHeight(18)
+            .width('100%')
+        }
+        .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+        .backgroundColor('#F8FCFC')
+        .border({ width: 1, color: '#DCEBED' })
+        .borderRadius(10)
+        .width('100%')
+      }
       Row({ space: 10 }) {
         Button('Take Photo')
           .fontSize(14)
@@ -240,7 +281,7 @@ struct Index {
           .height(42)
           .layoutWeight(1)
           .onClick(() => {
-            this.startMedicineGuideUpload('camera');
+            this.takeMedicineGuidePhoto();
           })
         Button('Upload File')
           .fontSize(14)
@@ -251,14 +292,156 @@ struct Index {
           .height(42)
           .layoutWeight(1)
           .onClick(() => {
-            this.startMedicineGuideUpload('file');
+            this.selectMedicineGuideFile();
           })
+      }
+      if (this.leafletUrl.length > 0) {
+        this.RplEndpointCard()
       }
     }
     .padding(14)
     .backgroundColor(Color.White)
     .borderRadius(12)
     .shadow({ radius: 10, color: '#10006472', offsetY: 4 })
+    .width('100%')
+  }
+
+  @Builder
+  UploadChoiceSheet() {
+    Column() {
+      Blank()
+        .layoutWeight(1)
+      Column({ space: 14 }) {
+        Row() {
+          Text('Upload medicine guide')
+            .fontSize(18)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#111827')
+            .layoutWeight(1)
+          Button('Close')
+            .fontSize(13)
+            .fontColor('#536175')
+            .backgroundColor('#F1F5F9')
+            .borderRadius(8)
+            .height(36)
+            .onClick(() => {
+              this.showUploadSheet = false;
+            })
+        }
+        .width('100%')
+
+        Text('Choose a photo source. MediClear will match the detected medicine against the local RPL database and show the official PDF endpoints.')
+          .fontSize(13)
+          .fontColor('#536175')
+          .lineHeight(19)
+          .width('100%')
+
+        Row({ space: 12 }) {
+          this.UploadChoiceButton('Take Photo', 'Camera scan', $r('app.media.bi_upc_scan'), '#009F9A', 'camera')
+          this.UploadChoiceButton('Choose Photo', 'From gallery', $r('app.media.bi_cloud_upload'), '#1767C5', 'gallery')
+        }
+        .width('100%')
+        Button('Upload PDF or document')
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#007D83')
+          .height(48)
+          .width('100%')
+          .backgroundColor('#F0FAF9')
+          .border({ width: 1, color: '#B7DFDC' })
+          .borderRadius(10)
+          .onClick(() => {
+            this.selectMedicineGuideFile();
+          })
+      }
+      .padding(18)
+      .backgroundColor(Color.White)
+      .borderRadius({ topLeft: 20, topRight: 20 })
+      .width('100%')
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#66000000')
+  }
+
+  @Builder
+  UploadChoiceButton(title: string, subtitle: string, icon: Resource, tint: string, sourceType: string) {
+    Column({ space: 8 }) {
+      this.IconBubble(icon, '#E8F8F6', tint)
+      Text(title)
+        .fontSize(15)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111827')
+      Text(subtitle)
+        .fontSize(12)
+        .fontColor('#536175')
+    }
+    .layoutWeight(1)
+    .height(128)
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor('#F8FCFC')
+    .border({ width: 1, color: '#DCEBED' })
+    .borderRadius(12)
+    .onClick(() => {
+      if (sourceType === 'camera') {
+        this.takeMedicineGuidePhoto();
+      } else if (sourceType === 'gallery') {
+        this.selectMedicineGuidePhoto();
+      } else {
+        this.selectMedicineGuideFile();
+      }
+    })
+  }
+
+  @Builder
+  RplEndpointCard() {
+    Column({ space: 8 }) {
+      Row({ space: 8 }) {
+        Image($r('app.media.bi_database_lock'))
+          .width(18)
+          .height(18)
+          .fillColor('#007D83')
+        Text('Local RPL database match')
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
+      }
+      .width('100%')
+
+      Text('RPL identifier: ' + this.rplIdentifier)
+        .fontSize(12)
+        .fontColor('#334155')
+        .width('100%')
+      Text(this.matchedPackage)
+        .fontSize(12)
+        .fontColor('#334155')
+        .lineHeight(17)
+        .width('100%')
+      Text('Leaflet PDF endpoint')
+        .fontSize(12)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#007D83')
+        .width('100%')
+      Text(this.leafletUrl)
+        .fontSize(11)
+        .fontColor('#42566F')
+        .lineHeight(16)
+        .width('100%')
+      Text('Characteristic PDF endpoint')
+        .fontSize(12)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#007D83')
+        .width('100%')
+      Text(this.characteristicUrl)
+        .fontSize(11)
+        .fontColor('#42566F')
+        .lineHeight(16)
+        .width('100%')
+    }
+    .padding(12)
+    .backgroundColor('#F0FAF9')
+    .border({ width: 1, color: '#B7DFDC' })
+    .borderRadius(10)
     .width('100%')
   }
 
@@ -575,7 +758,7 @@ struct Index {
     .backgroundColor(index === 0 ? '#009F9A' : (item.title === 'My Reminders' ? '#EEF5FF' : '#F0EDFF'))
     .onClick(() => {
       if (item.title === 'Upload Medicine Guide') {
-        this.startMedicineGuideUpload('camera');
+        this.showUploadSheet = true;
       } else if (item.title === 'My Reminders') {
         this.currentTab = 2;
       } else if (item.title === 'Medicine History') {
@@ -1052,13 +1235,115 @@ struct Index {
       .fillColor(tint)
   }
 
-  private startMedicineGuideUpload(sourceType: string): void {
-    this.uploadState = 'Reading medicine guide image...';
-    this.uploadSource = sourceType === 'camera' ? 'Photo captured. OCR text extracted and parsed locally.' : 'Guide file uploaded. OCR text extracted and parsed locally.';
-    const parsed: ParsedMedicineGuide = this.parseMedicineGuide(this.sampleMedicineGuideText());
-    this.applyParsedMedicineGuide(parsed);
-    this.uploadState = 'Analysis complete';
-    this.selectedGuide = 0;
+  private async takeMedicineGuidePhoto(): Promise<void> {
+    this.showUploadSheet = false;
+    this.uploadState = 'Opening camera...';
+    this.uploadSource = 'Camera is opening. Take a clear photo of the medicine box, label, or leaflet.';
+
+    try {
+      const helper = new MedicineGuideMediaHelper(getContext(this));
+      const picked = await helper.takePhoto(getContext(this) as common.UIAbilityContext);
+      this.handleMedicineGuidePicked('camera', picked);
+    } catch (err) {
+      this.uploadState = 'Camera cancelled';
+      this.uploadSource = 'No photo was captured. Tap Take Photo to try again.\nError: ' + JSON.stringify(err);
+    }
+  }
+
+  private async selectMedicineGuideFile(): Promise<void> {
+    this.showUploadSheet = false;
+    this.uploadState = 'Opening file picker...';
+    this.uploadSource = 'Choose a medicine package image, label photo, leaflet image, or PDF.';
+
+    try {
+      const helper = new MedicineGuideMediaHelper(getContext(this));
+      const picked = await helper.selectFile();
+      this.handleMedicineGuidePicked('file', picked);
+    } catch (err) {
+      this.uploadState = 'File upload cancelled';
+      this.uploadSource = 'No file was selected or the file could not be copied.\nError: ' + JSON.stringify(err);
+    }
+  }
+
+  private async selectMedicineGuidePhoto(): Promise<void> {
+    this.showUploadSheet = false;
+    this.uploadState = 'Opening photo library...';
+    this.uploadSource = 'Choose a medicine package or leaflet photo from your gallery.';
+
+    try {
+      const helper = new MedicineGuideMediaHelper(getContext(this));
+      const picked = await helper.selectPicture();
+      this.handleMedicineGuidePicked('gallery', picked);
+    } catch (err) {
+      this.uploadState = 'Photo upload cancelled';
+      this.uploadSource = 'No photo was selected or the photo could not be copied.\nError: ' + JSON.stringify(err);
+    }
+  }
+
+  private handleMedicineGuidePicked(sourceType: string, picked: PickedMedicineGuide): void {
+    if (picked.sandboxPath.length === 0) {
+      this.uploadState = 'No medicine guide selected';
+      this.uploadSource = 'MediClear did not receive a photo or file URI from the system picker.';
+      console.error('[MediClearOCR] no sandbox path returned from picker');
+      return;
+    }
+    this.uploadState = 'File ready for OCR';
+    this.uploadSource = 'Original URI: ' + picked.originalUri + '\nSandbox path: ' + picked.sandboxPath;
+    console.info('[MediClearOCR] picked originalUri=' + picked.originalUri);
+    console.info('[MediClearOCR] picked sandboxPath=' + picked.sandboxPath);
+    this.selectedGuideUri = picked.sandboxPath;
+    this.extractedOcrText = '';
+    this.startMedicineGuideUpload(sourceType);
+  }
+
+  private async startMedicineGuideUpload(sourceType: string): Promise<void> {
+    this.showUploadSheet = false;
+    this.uploadState = 'Extracting text with PaddleOCR...';
+    const guideUri = this.selectedGuideUri;
+    if (sourceType === 'camera') {
+      this.uploadSource = 'Photo captured. PaddleOCR is extracting text from the medicine image.\nURI: ' + guideUri;
+    } else if (sourceType === 'gallery') {
+      this.uploadSource = 'Photo selected. PaddleOCR is extracting text from the medicine image.\nURI: ' + guideUri;
+    } else {
+      this.uploadSource = 'File uploaded. PaddleOCR is extracting text from the medicine guide.\nURI: ' + guideUri;
+    }
+    try {
+      console.info('[MediClearOCR] start OCR sourceType=' + sourceType + ' path=' + guideUri);
+      this.uploadState = 'OCR 1/4 Reading selected file...';
+      const ocrText = await this.extractTextWithPaddleOcr(guideUri, sourceType);
+      console.info('[MediClearOCR] OCR text length=' + ocrText.length.toString());
+      this.extractedOcrText = ocrText;
+      this.uploadState = 'OCR complete - matching local RPL database...';
+
+      const database = await MediClearDatabase.getInstance(getContext(this));
+      const dao = new RplMedicineDAO(database.getStore());
+      const matches = await dao.searchByOcrText(ocrText);
+      if (matches.length === 0) {
+        this.uploadState = 'No local RPL match found';
+        this.uploadSource = 'OCR text: ' + ocrText + '\nNo matching local RPL seed record was found.';
+        return;
+      }
+
+      const parsed: ParsedMedicineGuide = this.parseMedicineGuide(ocrText);
+      this.applyRplMatchToParsedGuide(parsed, matches[0]);
+      this.applyParsedMedicineGuide(parsed);
+      this.uploadState = 'Analysis complete - official RPL endpoints found';
+      this.selectedGuide = 0;
+    } catch (err) {
+      console.error('[MediClearOCR] OCR failed: ' + JSON.stringify(err));
+      this.uploadState = 'PaddleOCR extraction unavailable';
+      this.uploadSource = 'MediClear could not extract text from this file.\nError: ' + JSON.stringify(err);
+    }
+  }
+
+  private async extractTextWithPaddleOcr(uri: string, sourceType: string): Promise<string> {
+    if (uri.length === 0) {
+      return '';
+    }
+
+    const service = new PaddleOcrService();
+    this.uploadState = 'OCR 2/4 Uploading file to PaddleOCR...';
+    return service.extractTextFromFile(uri);
   }
 
   private applyParsedMedicineGuide(parsed: ParsedMedicineGuide): void {
@@ -1078,47 +1363,82 @@ struct Index {
     this.reminderTwoTime = parsed.reminderTwoTime;
     this.reminderTwoLabel = parsed.reminderTwoLabel;
     this.sourceNote = parsed.sourceNote;
+    this.leafletUrl = parsed.leafletUrl;
+    this.characteristicUrl = parsed.characteristicUrl;
+    this.rplIdentifier = parsed.rplIdentifier;
+    this.matchedPackage = parsed.matchedPackage;
   }
 
   private parseMedicineGuide(text: string): ParsedMedicineGuide {
     const lower: string = text.toLowerCase();
     const parsed: ParsedMedicineGuide = new ParsedMedicineGuide();
 
-    if (lower.indexOf('ibuprofen') >= 0) {
-      parsed.name = 'Ibuprofen 200 mg';
-      parsed.subtitle = 'Pain reliever / Fever reducer';
-      parsed.activeIngredient = 'Ibuprofen 200 mg';
-      parsed.ingredientNote = 'Nonsteroidal anti-inflammatory drug (NSAID)';
+    if (lower.indexOf('espumisan') >= 0) {
+      parsed.name = 'Espumisan';
+      parsed.subtitle = 'Anti-flatulence medicine';
     }
 
-    if (lower.indexOf('every 6-8 hours') >= 0 || lower.indexOf('every 6 to 8 hours') >= 0) {
-      parsed.howToTake = '1 tablet each time\nEvery 6-8 hours\nTake after meals\nMax 3 tablets in 24 hours';
+    if (lower.indexOf('simeticonum') >= 0 || lower.indexOf('simethicone') >= 0) {
+      parsed.activeIngredient = 'Simeticonum 40 mg';
+      parsed.ingredientNote = 'Each capsule contains 40 mg simethicone';
+    }
+
+    if (lower.indexOf('3-4') >= 0 || lower.indexOf('three to four') >= 0) {
+      parsed.howToTake = '2 capsules each time\n3-4 times per day\nBefore, during, or after meals\nCan be taken before sleep if needed';
       parsed.reminderOneTime = '08:30';
-      parsed.reminderOneLabel = 'After breakfast';
+      parsed.reminderOneLabel = 'With breakfast';
       parsed.reminderTwoTime = '19:30';
-      parsed.reminderTwoLabel = 'After dinner';
+      parsed.reminderTwoLabel = 'With dinner';
     }
 
-    if (lower.indexOf('allergic') >= 0 || lower.indexOf('under 12') >= 0) {
-      parsed.contraindications = 'Allergic to ibuprofen or any NSAIDs\nUnder 12 years old without medical guidance';
+    if (lower.indexOf('allergic') >= 0 || lower.indexOf('e110') >= 0 || lower.indexOf('e218') >= 0) {
+      parsed.contraindications = 'Allergic to simethicone\nAllergic to E110, E218, or any excipient';
     }
 
-    if (lower.indexOf('alcohol') >= 0 || lower.indexOf('aspirin') >= 0) {
-      parsed.avoid = 'Avoid alcohol while taking ibuprofen\nDo not combine with ibuprofen, aspirin, or other NSAIDs';
+    if (lower.indexOf('persistent') >= 0 || lower.indexOf('abdominal') >= 0) {
+      parsed.avoid = 'Consult a clinician if abdominal symptoms are new or persistent\nCheck excipients if you have allergy history';
     }
 
-    if (lower.indexOf('3 days') >= 0 || lower.indexOf('breathing') >= 0) {
-      parsed.doctorIf = 'Symptoms last more than 3 days\nSevere allergic reaction, rash, swelling, or trouble breathing';
+    if (lower.indexOf('reaction') >= 0 || lower.indexOf('allergic') >= 0) {
+      parsed.doctorIf = 'New or persistent abdominal discomfort\nSuspected allergic reaction';
     }
 
-    parsed.sideEffectOne = 'Nausea';
-    parsed.sideEffectTwo = 'Dizziness';
-    parsed.sideEffectThree = 'Stomach discomfort';
-    parsed.sourceNote = 'Source: uploaded leaflet, dosage section and warning section';
+    parsed.sideEffectOne = 'No known Espumisan-specific adverse reactions';
+    parsed.sideEffectTwo = 'E110 may cause allergic reactions';
+    parsed.sideEffectThree = 'E218 may cause delayed allergic reactions';
+    parsed.leafletUrl = 'https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/2268/leaflet';
+    parsed.characteristicUrl = 'https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/2268/characteristic';
+    parsed.rplIdentifier = '100022688';
+    parsed.matchedPackage = 'GTIN: 05909990168712 | OTC | Package: 25 capsules';
+    parsed.sourceNote = 'Source: local RPL SQLite match, Espumisan 40 mg capsules. Product endpoint id: 2268.';
     return parsed;
   }
 
+  private applyRplMatchToParsedGuide(parsed: ParsedMedicineGuide, record: RplMedicineRecord): void {
+    const matchedName = record.name.toLowerCase();
+    parsed.name = record.name + ' ' + record.strength;
+    parsed.subtitle = record.dosageForm.length > 0 ? record.dosageForm : 'Medicine matched from local RPL database';
+    parsed.activeIngredient = record.activeSubstance.length > 0 ? record.activeSubstance : record.commonName;
+    parsed.ingredientNote = 'Official RPL common name: ' + record.commonName;
+    parsed.leafletUrl = record.leafletUrl;
+    parsed.characteristicUrl = record.characteristicUrl;
+    parsed.rplIdentifier = record.rplIdentifier;
+    parsed.matchedPackage = record.packageInfo;
+    parsed.sourceNote = 'Source: local MediClear RDB match. RPL identifier: ' + record.rplIdentifier + '. Product endpoint id: ' + record.id.toString() + '.';
+    if (matchedName.indexOf('espumisan') < 0) {
+      parsed.howToTake = 'Open the official patient leaflet\nFollow the dose prescribed by your doctor or pharmacist\nDo not change dose based only on package OCR\nUse reminders only after confirming the plan';
+      parsed.contraindications = 'Check the official leaflet before use\nDo not use if allergic to ' + record.commonName;
+      parsed.avoid = 'Do not combine with other medicines without professional advice\nCheck interactions in the official characteristic PDF';
+      parsed.doctorIf = 'You are unsure about the dose\nSymptoms change or adverse reactions occur';
+      parsed.sideEffectOne = 'See official leaflet';
+      parsed.sideEffectTwo = 'Check interactions';
+      parsed.sideEffectThree = 'Ask pharmacist';
+      parsed.reminderOneLabel = 'After plan confirmation';
+      parsed.reminderTwoLabel = 'After plan confirmation';
+    }
+  }
+
   private sampleMedicineGuideText(): string {
-    return 'Ibuprofen 200 mg tablets. Active ingredient: ibuprofen 200 mg. Adults and children over 12 years: take 1 tablet every 6-8 hours. Take after meals. Do not exceed 3 tablets in 24 hours. Do not use if allergic to ibuprofen or any NSAIDs. Do not use for children under 12 years without medical guidance. Avoid alcohol. Do not combine with aspirin or other NSAIDs. Consult a doctor if symptoms persist for more than 3 days or if rash, swelling, breathing difficulty, nausea, dizziness, or stomach discomfort occurs.';
+    return 'Espumisan 40 mg capsules. Active ingredient: Simeticonum 40 mg. Adults may take 2 capsules 3-4 times daily, before, during, or after meals, and before sleep if needed. Do not use if allergic to simethicone, E110, E218, or any excipient. Consult a clinician if abdominal symptoms are new or persistent. E110 and E218 may cause allergic reactions.';
   }
 }
