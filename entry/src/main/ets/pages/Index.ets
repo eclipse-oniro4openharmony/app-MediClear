@@ -7,6 +7,7 @@ import { PaddleOcrService } from '../services/PaddleOcrService';
 import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
 import { BackendService, BackendChatResponse, BackendDocumentResponse, BackendHealthResponse } from '../services/BackendService';
 import { MEDICLEAR_BACKEND_BASE_URL } from '../services/BackendConfig';
+import { Markdown, MarkdownController } from '@luvi/lv-markdown-in';
 
 class ActionItem {
   title: string;
@@ -152,6 +153,23 @@ struct Index {
     new ReminderItem('08:30', 'After breakfast', '1 tablet', $r('app.media.bi_sun'), '#009F9A', '#E7FAF6'),
     new ReminderItem('19:30', 'After dinner', '1 tablet', $r('app.media.bi_moon_stars'), '#5648D9', '#F0EEFF')
   ];
+
+  private chatMarkdownController: MarkdownController = new MarkdownController();
+
+  aboutToAppear(): void {
+    this.chatMarkdownController
+      .setTextColor('#1F2A44')
+      .setTextSize(13)
+      .setTextLineHeight(19)
+      .setTitleColor('#1F2A44')
+      .setTitleSize([17, 16, 15, 14, 13, 13])
+      .setTitleLineHeight([22, 21, 20, 19, 18, 18])
+      .setHyperlinkTextColor('#008A88')
+      .setHyperlinkTextSize(13)
+      .setUlPointColor('#1F2A44')
+      .setUlPointSize(4);
+    this.chatMarkdownController.setBlockSpacing(6);
+  }
 
   build() {
     Stack() {
@@ -939,17 +957,29 @@ struct Index {
     Row() {
       if (message.role === 'user') {
         Blank()
-      }
-      Text(message.text)
-        .fontSize(13)
-        .fontColor(message.role === 'user' ? Color.White : '#1F2A44')
-        .lineHeight(19)
+        Text(message.text)
+          .fontSize(13)
+          .fontColor(Color.White)
+          .lineHeight(19)
+          .padding({ left: 13, right: 13, top: 10, bottom: 10 })
+          .backgroundColor('#009F9A')
+          .border({ width: 1, color: '#009F9A' })
+          .borderRadius(12)
+          .constraintSize({ maxWidth: '82%' })
+      } else {
+        Column() {
+          Markdown({
+            controller: this.chatMarkdownController,
+            text: message.text,
+            mode: 'text'
+          })
+            .width('100%')
+        }
+        .width('82%')
         .padding({ left: 13, right: 13, top: 10, bottom: 10 })
-        .backgroundColor(message.role === 'user' ? '#009F9A' : '#FFFFFF')
-        .border({ width: 1, color: message.role === 'user' ? '#009F9A' : '#E3ECF2' })
+        .backgroundColor(Color.White)
+        .border({ width: 1, color: '#E3ECF2' })
         .borderRadius(12)
-        .constraintSize({ maxWidth: '82%' })
-      if (message.role !== 'user') {
         Blank()
       }
     }

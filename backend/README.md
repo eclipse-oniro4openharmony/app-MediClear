@@ -28,12 +28,32 @@ Copy the example environment file if you want to customize ports or MongoDB sett
 cp .env.example .env
 ```
 
-Set the DeepSeek key in `backend/.env`:
+Configure the chat model in `backend/.env`.
+
+For the current DeepSeek setup:
 
 ```text
-DEEPSEEK_API_KEY=sk-your-key-here
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_MODEL=deepseek-chat
+LLM_API_KEY=sk-your-key-here
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
+```
+
+For a local Llama model, use any OpenAI-compatible local server. Because this backend runs in Docker, use `host.docker.internal` instead of `localhost`.
+
+Ollama example:
+
+```text
+LLM_API_KEY=
+LLM_BASE_URL=http://host.docker.internal:11434/v1
+LLM_MODEL=llama3.2:3b
+```
+
+LM Studio example:
+
+```text
+LLM_API_KEY=
+LLM_BASE_URL=http://host.docker.internal:1234/v1
+LLM_MODEL=local-model
 ```
 
 ```bash
@@ -161,7 +181,9 @@ Content-Type: application/json
 }
 ```
 
-The server retrieves relevant leaflet chunks from MongoDB, gives DeepSeek a restricted MediClear assistant identity, and answers only from the current medicine knowledge base.
+The server retrieves relevant leaflet chunks from MongoDB, gives the configured LLM a restricted MediClear assistant identity, and answers only from the current medicine knowledge base.
+
+Answers may include concise Markdown for readability, including bold labels, bullet lists, and numbered steps. The mobile Chat page renders assistant Markdown with `@luvi/lv-markdown-in`.
 
 ## Data Policy
 
@@ -180,4 +202,4 @@ The service does not store:
 - uploaded mobile photos
 - AI chat answers
 
-The DeepSeek API key stays in `backend/.env`; it is not stored in the mobile app.
+The LLM API key, if needed, stays in `backend/.env`; it is not stored in the mobile app. Local Llama/Ollama/LM Studio setups can leave `LLM_API_KEY` empty.
