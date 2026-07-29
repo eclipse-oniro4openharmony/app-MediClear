@@ -184,9 +184,9 @@ Possible implementation route:
 7. ArkTS and ArkUI mobile interface
 8. Local notification and history tracking
 
-Possible open-source components:
+Possible components:
 
-- OCR: Tesseract or PaddleOCR
+- OCR: HarmonyOS Core Vision text recognition for medicine package photos
 - PDF parsing: PDF.js, Poppler, or platform PDF extraction
 - Text extraction: rule-based parser plus optional LLM support
 - Local database: SQLite
@@ -249,31 +249,11 @@ Chat answers can include concise Markdown such as bold labels, bullet lists, and
 
 For a physical phone, the phone and computer must be on the same Wi-Fi, and Windows Firewall must allow inbound traffic on port `18080`. Do not use `127.0.0.1` on a physical phone, because that points to the phone itself.
 
-### PaddleOCR API Tool
+### Text Extraction
 
-The repository includes a helper script for extracting text from medicine package images, label photos, and PDFs using the PaddleOCR API.
+Medicine package photos and gallery images are recognized on-device with HarmonyOS Core Vision text recognition.
 
-Install the Python dependency:
-
-```bash
-python -m pip install requests
-```
-
-Set the API token as an environment variable instead of committing it to source code:
-
-```powershell
-$env:PADDLEOCR_TOKEN="your-token"
-```
-
-Run OCR on a local file or public file URL:
-
-```bash
-python tools/paddleocr_extract.py "path/to/medicine-label.jpg"
-python tools/paddleocr_extract.py "path/to/leaflet.pdf"
-python tools/paddleocr_extract.py "https://example.com/leaflet.pdf"
-```
-
-The script writes page-level markdown, downloaded OCR images, raw JSONL, and a merged `combined.md` file under `output/paddleocr/`.
+Official leaflet PDFs are not stored in the mobile app. After the app matches a medicine to an RPL product ID, the Docker backend downloads the official PDF, extracts text with `pdfjs-dist`, stores the resulting text chunks in MongoDB, and discards the PDF buffer.
 
 ## Safety Boundary
 
