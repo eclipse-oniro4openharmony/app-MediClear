@@ -20,6 +20,20 @@ Official leaflet knowledge base:
 ${contextText}`;
 }
 
+function detectQuestionLanguage(question) {
+  if (/[\u4e00-\u9fff]/.test(question)) {
+    return 'Chinese';
+  }
+
+  const lower = question.toLowerCase();
+  const polishSignals = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż'];
+  if (polishSignals.some((signal) => lower.includes(signal))) {
+    return 'Polish';
+  }
+
+  return 'English';
+}
+
 function extractAnswer(responseJson) {
   const choice = responseJson?.choices?.[0];
   const content = choice?.message?.content;
@@ -30,6 +44,7 @@ function extractAnswer(responseJson) {
 }
 
 export async function askDeepSeekWithKnowledgeBase(input) {
+  const questionLanguage = detectQuestionLanguage(input.question);
   const messages = [
     {
       role: 'system',
@@ -37,7 +52,11 @@ export async function askDeepSeekWithKnowledgeBase(input) {
     },
     {
       role: 'user',
-      content: input.question
+      content: `User question language: ${questionLanguage}.
+Answer language requirement: answer ONLY in ${questionLanguage}. Do not switch to the leaflet language unless it is also ${questionLanguage}.
+
+Question:
+${input.question}`
     }
   ];
 
