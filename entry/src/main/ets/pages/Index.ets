@@ -3,7 +3,6 @@ import { MediClearDatabase } from '../database/MediClearDatabase';
 import { RplMedicineDAO } from '../database/RplMedicineDAO';
 import { RplMedicineRecord } from '../database/RplMedicineRecord';
 import { CoreVisionOcrService } from '../services/CoreVisionOcrService';
-import { PaddleOcrService } from '../services/PaddleOcrService';
 import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
 import { BackendService, BackendChatResponse, BackendDocumentResponse, BackendHealthResponse } from '../services/BackendService';
 import { MEDICLEAR_BACKEND_BASE_URL } from '../services/BackendConfig';
@@ -1697,12 +1696,12 @@ struct Index {
     } else if (sourceType === 'gallery') {
       this.uploadSource = 'Photo selected. MediClear is extracting text from the medicine image.\nURI: ' + guideUri;
     } else {
-      this.uploadSource = 'File uploaded. PaddleOCR is extracting text from the medicine guide.\nURI: ' + guideUri;
+      this.uploadSource = 'File uploaded. MediClear is extracting text locally from the medicine image.\nURI: ' + guideUri;
     }
     try {
       console.info('[MediClearOCR] start OCR sourceType=' + sourceType + ' path=' + guideUri);
       this.uploadState = 'OCR 1/4 Reading selected file...';
-      const ocrText = await this.extractTextWithPaddleOcr(guideUri, sourceType);
+      const ocrText = await this.extractTextWithCoreVision(guideUri, sourceType);
       console.info('[MediClearOCR] OCR text length=' + ocrText.length.toString());
       this.extractedOcrText = ocrText;
       this.uploadState = 'OCR complete - matching local RPL database...';
@@ -1847,31 +1846,25 @@ struct Index {
     }
   }
 
-  private async extractTextWithPaddleOcr(uri: string, sourceType: string): Promise<string> {
+  private async extractTextWithCoreVision(uri: string, sourceType: string): Promise<string> {
     if (uri.length === 0) {
       return '';
     }
 
     const lowerUri = uri.toLowerCase();
-    const isImageSource = (sourceType === 'camera' || sourceType === 'gallery') && !lowerUri.endsWith('.pdf');
-    if (isImageSource) {
-      try {
-        this.uploadState = 'OCR 2/4 Recognizing text locally with Core Vision...';
-        const coreVisionService = new CoreVisionOcrService();
-        const localText = await coreVisionService.extractTextFromImage(uri);
-        if (localText.trim().length > 0) {
-          console.info('[MediClearCoreVisionOCR] local OCR succeeded');
-          return localText;
-        }
-        console.warn('[MediClearCoreVisionOCR] empty local OCR result, falling back to PaddleOCR');
-      } catch (err) {
-        console.error('[MediClearCoreVisionOCR] local OCR failed, falling back to PaddleOCR: ' + JSON.stringify(err));
-      }
+    if (lowerUri.endsWith('.pdf')) {
+      throw new Error('Mobile OCR now supports medicine photos only. For official PDF leaflets, use the matched RPL leaflet endpoint and backend PDF knowledge base.');
     }
 
-    const service = new PaddleOcrService();
-    this.uploadState = 'OCR 2/4 Uploading file to PaddleOCR...';
-    return service.extractTextFromFile(uri);
+    this.uploadState = 'OCR 2/4 Recognizing text locally with Core Vision...';
+    const coreVisionService = new CoreVisionOcrService();
+    const localText = await coreVisionService.extractTextFromImage(uri);
+    if (localText.trim().length > 0) {
+      console.info('[MediClearCoreVisionOCR] local OCR succeeded');
+      return localText;
+    }
+
+    throw new Error('Core Vision returned an empty OCR result');
   }
 
   private applyParsedMedicineGuide(parsed: ParsedMedicineGuide): void {
@@ -1948,7 +1941,7 @@ struct Index {
 
   private applyRplMatchToParsedGuide(parsed: ParsedMedicineGuide, record: RplMedicineRecord): void {
     const matchedName = record.name.toLowerCase();
-    parsed.name = record.name + ' ' + record.strength;
+    parsed.name = this.buildRplDisplayName(record);
     parsed.subtitle = record.dosageForm.length > 0 ? record.dosageForm : 'Medicine matched from local RPL database';
     parsed.activeIngredient = record.activeSubstance.length > 0 ? record.activeSubstance : record.commonName;
     parsed.ingredientNote = 'Official RPL common name: ' + record.commonName;
@@ -1970,6 +1963,88 @@ struct Index {
       parsed.reminderOneLabel = 'After plan confirmation';
       parsed.reminderTwoLabel = 'After plan confirmation';
     }
+  }
+
+  private buildRplDisplayName(record: RplMedicineRecord): string {
+    const cleanName = this.cleanRplProductName(record.name);
+    if (record.strength.length === 0 || cleanName.toLowerCase().indexOf(record.strength.toLowerCase()) >= 0) {
+      return cleanName;
+    }
+    return cleanName + ' ' + record.strength;
+  }
+
+  private cleanRplProductName(name: string): string {
+    const clean = this.collapseSpaces(name);
+    if (clean.length <= 42) {
+      return clean;
+    }
+
+    const leadingUppercaseName = this.extractLeadingUppercaseName(clean);
+    if (leadingUppercaseName.length > 0) {
+      return leadingUppercaseName;
+    }
+
+    const firstClause = this.extractFirstNameClause(clean);
+    if (firstClause.length > 0 && firstClause.length <= 42) {
+      return firstClause;
+    }
+
+    return this.takeLeadingWords(clean, 4);
+  }
+
+  private collapseSpaces(value: string): string {
+    return value.trim().replace(/\s+/g, ' ');
+  }
+
+  private extractLeadingUppercaseName(value: string): string {
+    const parts = value.split(' ');
+    const kept: string[] = [];
+    for (let index = 0; index < parts.length && index < 5; index++) {
+      const part = parts[index].trim();
+      if (part.length === 0) {
+        continue;
+      }
+      if (!this.isUppercaseNameToken(part)) {
+        break;
+      }
+      kept.push(part);
+    }
+    return kept.length >= 2 ? kept.join(' ') : '';
+  }
+
+  private extractFirstNameClause(value: string): string {
+    const separators: string[] = [':', ';', ',', ' - ', ' – ', ' — ', '('];
+    let cutIndex = -1;
+    for (let index = 0; index < separators.length; index++) {
+      const separatorIndex = value.indexOf(separators[index]);
+      if (separatorIndex > 0 && (cutIndex < 0 || separatorIndex < cutIndex)) {
+        cutIndex = separatorIndex;
+      }
+    }
+    if (cutIndex <= 0) {
+      return '';
+    }
+    return value.substring(0, cutIndex).trim();
+  }
+
+  private takeLeadingWords(value: string, maxWords: number): string {
+    const parts = value.split(' ');
+    const kept: string[] = [];
+    for (let index = 0; index < parts.length && kept.length < maxWords; index++) {
+      const part = parts[index].trim();
+      if (part.length > 0) {
+        kept.push(part);
+      }
+    }
+    return kept.join(' ');
+  }
+
+  private isUppercaseNameToken(value: string): boolean {
+    const lettersOnly = value.replace(/[^A-Za-zĄĆĘŁŃÓŚŹŻÄÖÜẞÀ-ÿ]+/g, '');
+    if (lettersOnly.length < 2) {
+      return false;
+    }
+    return lettersOnly === lettersOnly.toUpperCase();
   }
 
   private extractRplEndpointId(record: RplMedicineRecord): string {
