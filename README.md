@@ -194,6 +194,24 @@ Possible open-source components:
 - UI: ArkTS and ArkUI
 - Optional AI model: local model or self-hosted LLM
 
+### Backend Configuration
+
+The mobile app uses a separate Docker backend for PDF leaflet extraction and knowledge-base chunk storage.
+
+Current physical-phone backend URL:
+
+```text
+http://192.168.123.131:18080
+```
+
+The ArkTS config is in:
+
+```text
+entry/src/main/ets/services/BackendConfig.ets
+```
+
+For a physical phone, the phone and computer must be on the same Wi-Fi, and Windows Firewall must allow inbound traffic on port `18080`. Do not use `127.0.0.1` on a physical phone, because that points to the phone itself.
+
 ### PaddleOCR API Tool
 
 The repository includes a helper script for extracting text from medicine package images, label photos, and PDFs using the PaddleOCR API.

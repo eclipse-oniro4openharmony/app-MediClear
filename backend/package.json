@@ -1,0 +1,16 @@
+{
+  "name": "mediclear-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mongodb": "^6.13.1",
+    "pdfjs-dist": "^4.10.38",
+    "zod": "^3.24.2"
+  }
+}

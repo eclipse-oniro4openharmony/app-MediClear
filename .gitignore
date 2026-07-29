@@ -14,3 +14,4 @@
 /rpl-products.xml
 /data/rpl_cache.sqlite
 /output/
+/backend/.env

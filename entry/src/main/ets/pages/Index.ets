@@ -5,6 +5,8 @@ import { RplMedicineRecord } from '../database/RplMedicineRecord';
 import { CoreVisionOcrService } from '../services/CoreVisionOcrService';
 import { PaddleOcrService } from '../services/PaddleOcrService';
 import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
+import { BackendService, BackendChatResponse, BackendDocumentResponse, BackendHealthResponse } from '../services/BackendService';
+import { MEDICLEAR_BACKEND_BASE_URL } from '../services/BackendConfig';
 
 class ActionItem {
   title: string;
@@ -26,13 +28,15 @@ class MedicineRecord {
   date: string;
   status: string;
   tint: string;
+  productId: string;
 
-  constructor(name: string, subtitle: string, date: string, status: string, tint: string) {
+  constructor(name: string, subtitle: string, date: string, status: string, tint: string, productId: string = '') {
     this.name = name;
     this.subtitle = subtitle;
     this.date = date;
     this.status = status;
     this.tint = tint;
+    this.productId = productId;
   }
 }
 
@@ -79,6 +83,16 @@ class ParsedMedicineGuide {
   sourceNote: string = 'Source: local RPL SQLite match, Espumisan 40 mg capsules';
 }
 
+class MedicineChatMessage {
+  role: string;
+  text: string;
+
+  constructor(role: string, text: string) {
+    this.role = role;
+    this.text = text;
+  }
+}
+
 @Entry
 @Component
 struct Index {
@@ -111,7 +125,14 @@ struct Index {
   @State productId: string = '';
   @State matchedKeywords: string = '';
   @State matchedPackage: string = '';
+  @State backendKnowledgeStatus: string = '';
+  @State backendKnowledgeDocumentId: string = '';
+  @State backendKnowledgeTextLength: string = '';
   @State chatQuestion: string = '';
+  @State chatMessages: MedicineChatMessage[] = [
+    new MedicineChatMessage('assistant', 'Take a photo of a medicine or choose a medicine with a ready knowledge base, then ask questions based on the official leaflet.')
+  ];
+  @State chatStatus: string = 'No active knowledge base';
 
   private actions: ActionItem[] = [
     new ActionItem('Upload Medicine Guide', 'Take photo or upload file', $r('app.media.bi_cloud_upload'), '#009F9A'),
@@ -120,6 +141,7 @@ struct Index {
   ];
 
   private medicines: MedicineRecord[] = [
+    new MedicineRecord('Espumisan 40 mg', 'Anti-flatulence medicine', 'Jul 29, 2026', 'Active', '#009F9A', '2268'),
     new MedicineRecord('Ibuprofen 200 mg', 'Pain reliever / Fever reducer', 'May 20, 2024', 'Active', '#009F9A'),
     new MedicineRecord('Vitamin C 500 mg', 'Immune support', 'May 10, 2024', 'Completed', '#E97921'),
     new MedicineRecord('Cetirizine 10 mg', 'Allergy relief', 'Apr 28, 2024', 'Completed', '#1A9D9A'),
@@ -457,6 +479,31 @@ struct Index {
         .fontColor('#42566F')
         .lineHeight(16)
         .width('100%')
+      if (this.backendKnowledgeStatus.length > 0) {
+        Text('Backend knowledge base')
+          .fontSize(12)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#007D83')
+          .width('100%')
+          .margin({ top: 4 })
+        Text('Status: ' + this.backendKnowledgeStatus)
+          .fontSize(11)
+          .fontColor('#42566F')
+          .lineHeight(16)
+          .width('100%')
+        Text('Backend: ' + MEDICLEAR_BACKEND_BASE_URL)
+          .fontSize(11)
+          .fontColor('#42566F')
+          .lineHeight(16)
+          .width('100%')
+        if (this.backendKnowledgeDocumentId.length > 0) {
+          Text('Document ID: ' + this.backendKnowledgeDocumentId + ' | Text length: ' + this.backendKnowledgeTextLength)
+            .fontSize(11)
+            .fontColor('#42566F')
+            .lineHeight(16)
+            .width('100%')
+        }
+      }
     }
     .padding(12)
     .backgroundColor('#F0FAF9')
@@ -686,6 +733,7 @@ struct Index {
           this.ChatIntroCard()
           this.ChatCurrentMedicineCard()
           this.ChatPhotoCard()
+          this.ChatMessages()
           this.ChatSuggestions()
         }
         .padding({ left: 20, right: 20, top: 12, bottom: 18 })
@@ -785,6 +833,9 @@ struct Index {
           Text(this.leafletUrl.length > 0 ? 'Source: Official Leaflet (RPL)' : 'Source: Local medicine guide')
             .fontSize(12)
             .fontColor('#294159')
+          Text(this.backendKnowledgeDocumentId.length > 0 ? 'Knowledge base #' + this.backendKnowledgeDocumentId : this.chatStatus)
+            .fontSize(12)
+            .fontColor(this.backendKnowledgeDocumentId.length > 0 ? '#007D83' : '#7A8797')
         }
         .layoutWeight(1)
       }
@@ -803,6 +854,8 @@ struct Index {
         .fontSize(15)
         .fontWeight(FontWeight.Bold)
         .fontColor('#0D5160')
+        .width('100%')
+        .textAlign(TextAlign.Center)
       Stack() {
         Image($r('app.media.chat_camera_art'))
           .width(76)
@@ -813,11 +866,35 @@ struct Index {
       .width(88)
       .height(88)
       .margin({ top: 6, bottom: 0 })
-      Text('Tap to take photo')
+      Text(this.uploadState === 'No medicine guide scanned yet' ? 'Tap to take photo' : this.uploadState)
         .fontSize(12)
         .fontColor('#536175')
+        .textAlign(TextAlign.Center)
+        .maxLines(2)
+      if (this.productId.length > 0) {
+        Text('RPL Product ID: ' + this.productId)
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#007D83')
+          .textAlign(TextAlign.Center)
+          .maxLines(1)
+      }
+      if (this.backendKnowledgeDocumentId.length > 0) {
+        Text('Knowledge base ready: #' + this.backendKnowledgeDocumentId)
+          .fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#007D83')
+          .textAlign(TextAlign.Center)
+          .maxLines(1)
+      } else if (this.backendKnowledgeStatus.length > 0) {
+        Text(this.backendKnowledgeStatus)
+          .fontSize(11)
+          .fontColor('#536175')
+          .textAlign(TextAlign.Center)
+          .maxLines(2)
+      }
     }
-    .height(168)
+    .height(210)
     .justifyContent(FlexAlign.Center)
     .padding(16)
     .backgroundColor('#FFFFFF')
@@ -840,6 +917,40 @@ struct Index {
         this.ChatSuggestionChip('How should I take this?')
         this.ChatSuggestionChip('What are the side effects?')
         this.ChatSuggestionChip('Can I take this with other medicines?')
+      }
+    }
+    .width('100%')
+  }
+
+  @Builder
+  ChatMessages() {
+    Column({ space: 10 }) {
+      ForEach(this.chatMessages, (message: MedicineChatMessage) => {
+        this.ChatBubble(message)
+      }, (message: MedicineChatMessage, index: number) => {
+        return message.role + '-' + index.toString() + '-' + message.text;
+      })
+    }
+    .width('100%')
+  }
+
+  @Builder
+  ChatBubble(message: MedicineChatMessage) {
+    Row() {
+      if (message.role === 'user') {
+        Blank()
+      }
+      Text(message.text)
+        .fontSize(13)
+        .fontColor(message.role === 'user' ? Color.White : '#1F2A44')
+        .lineHeight(19)
+        .padding({ left: 13, right: 13, top: 10, bottom: 10 })
+        .backgroundColor(message.role === 'user' ? '#009F9A' : '#FFFFFF')
+        .border({ width: 1, color: message.role === 'user' ? '#009F9A' : '#E3ECF2' })
+        .borderRadius(12)
+        .constraintSize({ maxWidth: '82%' })
+      if (message.role !== 'user') {
+        Blank()
       }
     }
     .width('100%')
@@ -883,6 +994,9 @@ struct Index {
       .width(44)
       .height(44)
       .borderRadius(22)
+      .onClick(() => {
+        this.sendMedicineChatQuestion();
+      })
     }
     .height(54)
     .padding({ left: 14, right: 5 })
@@ -1055,6 +1169,9 @@ struct Index {
     }
     .padding(14)
     .border({ width: { bottom: 1 }, color: '#EEF2F6' })
+    .onClick(() => {
+      this.switchToHistoryMedicine(record);
+    })
   }
 
   @Builder
@@ -1535,6 +1652,9 @@ struct Index {
     this.matchedPackage = '';
     this.leafletUrl = '';
     this.characteristicUrl = '';
+    this.backendKnowledgeStatus = '';
+    this.backendKnowledgeDocumentId = '';
+    this.backendKnowledgeTextLength = '';
     this.startMedicineGuideUpload(sourceType);
   }
 
@@ -1570,12 +1690,130 @@ struct Index {
       const parsed: ParsedMedicineGuide = this.parseMedicineGuide(ocrText);
       this.applyRplMatchToParsedGuide(parsed, matches[0]);
       this.applyParsedMedicineGuide(parsed);
-      this.uploadState = 'Analysis complete - official RPL endpoints found';
+      this.uploadState = 'RPL match found - preparing backend knowledge base...';
+      await this.prepareBackendKnowledgeBase(parsed);
+      this.uploadState = 'Analysis complete - backend knowledge base ready';
       this.selectedGuide = 0;
     } catch (err) {
       console.error('[MediClearOCR] OCR failed: ' + JSON.stringify(err));
       this.uploadState = 'Text extraction unavailable';
       this.uploadSource = 'MediClear could not extract text from this file.\nError: ' + JSON.stringify(err);
+    }
+  }
+
+  private async prepareBackendKnowledgeBase(parsed: ParsedMedicineGuide): Promise<void> {
+    if (parsed.productId.length === 0) {
+      this.backendKnowledgeStatus = 'Skipped - no product ID';
+      return;
+    }
+
+    this.backendKnowledgeStatus = 'Connecting to ' + MEDICLEAR_BACKEND_BASE_URL;
+    const backend = new BackendService();
+    try {
+      const health: BackendHealthResponse = await backend.checkHealth();
+      if (!health.ok) {
+        throw new Error('Backend health check returned not ok');
+      }
+      this.backendKnowledgeStatus = 'Backend connected - downloading official leaflet';
+      const document: BackendDocumentResponse = await backend.extractRplLeaflet(parsed.productId, parsed.name);
+      this.backendKnowledgeDocumentId = document.id.toString();
+      this.backendKnowledgeTextLength = document.text_length.toString();
+      this.backendKnowledgeStatus = document.status + ' via ' + document.extraction_method;
+      this.chatStatus = 'Knowledge base ready for ' + parsed.name;
+      this.appendChatMessage('assistant', 'I loaded the official leaflet knowledge base for ' + parsed.name +
+        '. You can ask about dosage, side effects, warnings, storage, and contraindications from the leaflet.');
+      this.uploadSource = this.uploadSource + '\n\nBackend knowledge base is ready. Document ID: ' +
+        this.backendKnowledgeDocumentId + '.';
+    } catch (err) {
+      const errorText = this.formatError(err);
+      console.error('[MediClearBackend] Backend extraction failed: ' + errorText);
+      this.backendKnowledgeStatus = 'Unavailable - ' + errorText;
+      this.uploadSource = this.uploadSource + '\n\nBackend is not reachable at ' + MEDICLEAR_BACKEND_BASE_URL +
+        '. Check that the phone and computer are on the same Wi-Fi and Windows Firewall allows the configured backend port.';
+    }
+  }
+
+  private formatError(err: Object): string {
+    if (err instanceof Error) {
+      return err.message;
+    }
+    return JSON.stringify(err);
+  }
+
+  private appendChatMessage(role: string, text: string): void {
+    this.chatMessages = this.chatMessages.concat([new MedicineChatMessage(role, text)]);
+  }
+
+  private async sendMedicineChatQuestion(): Promise<void> {
+    const question = this.chatQuestion.trim();
+    if (question.length === 0) {
+      return;
+    }
+
+    this.chatQuestion = '';
+    this.appendChatMessage('user', question);
+
+    if (this.backendKnowledgeDocumentId.length === 0) {
+      this.appendChatMessage('assistant', 'Please take a photo of a medicine first, or choose a history item with a ready knowledge base.');
+      return;
+    }
+
+    const documentId = Number.parseInt(this.backendKnowledgeDocumentId, 10);
+    if (!Number.isFinite(documentId) || documentId <= 0) {
+      this.appendChatMessage('assistant', 'The current knowledge base is not valid. Please scan the medicine again.');
+      return;
+    }
+
+    this.chatStatus = 'Asking MediClear assistant...';
+    this.appendChatMessage('assistant', 'Thinking based on the official leaflet...');
+    try {
+      const backend = new BackendService();
+      const reply: BackendChatResponse = await backend.askMedicineQuestion(question, documentId, this.medicineName);
+      const loadingIndex = this.chatMessages.length - 1;
+      const updatedMessages = this.chatMessages.slice(0, loadingIndex);
+      updatedMessages.push(new MedicineChatMessage('assistant', reply.answer));
+      this.chatMessages = updatedMessages;
+      this.chatStatus = 'Ready';
+    } catch (err) {
+      const loadingIndex = this.chatMessages.length - 1;
+      const updatedMessages = this.chatMessages.slice(0, loadingIndex);
+      updatedMessages.push(new MedicineChatMessage('assistant', 'I could not reach the medicine AI service. Error: ' + JSON.stringify(err)));
+      this.chatMessages = updatedMessages;
+      this.chatStatus = 'Chat unavailable';
+      console.error('[MediClearChat] chat failed: ' + JSON.stringify(err));
+    }
+  }
+
+  private async switchToHistoryMedicine(record: MedicineRecord): Promise<void> {
+    this.medicineName = record.name;
+    this.medicineSubtitle = record.subtitle;
+    this.currentTab = 3;
+
+    if (record.productId.length === 0) {
+      this.backendKnowledgeDocumentId = '';
+      this.backendKnowledgeTextLength = '';
+      this.chatStatus = 'No backend knowledge base for this history item';
+      this.appendChatMessage('assistant', record.name + ' is selected, but no official leaflet knowledge base is loaded yet. Take a photo to create one.');
+      return;
+    }
+
+    this.productId = record.productId;
+    this.chatStatus = 'Loading history knowledge base...';
+    try {
+      const backend = new BackendService();
+      const document: BackendDocumentResponse = await backend.getLatestDocumentByProduct(record.productId);
+      this.backendKnowledgeDocumentId = document.id.toString();
+      this.backendKnowledgeTextLength = document.text_length.toString();
+      this.backendKnowledgeStatus = document.status + ' via ' + document.extraction_method;
+      this.chatStatus = 'Knowledge base ready for ' + record.name;
+      this.appendChatMessage('assistant', 'Switched to ' + record.name + '. I will answer using its official leaflet knowledge base.');
+    } catch (err) {
+      this.backendKnowledgeDocumentId = '';
+      this.backendKnowledgeTextLength = '';
+      this.chatStatus = 'No stored knowledge base found';
+      this.appendChatMessage('assistant', 'I could not find a stored official leaflet knowledge base for ' + record.name +
+        '. Take a photo first so MediClear can match and load it.');
+      console.error('[MediClearChat] history knowledge base lookup failed: ' + JSON.stringify(err));
     }
   }
 
@@ -1715,7 +1953,7 @@ struct Index {
       return characteristicId;
     }
 
-    return record.id.toString();
+    return '';
   }
 
   private extractRplEndpointIdFromUrl(url: string): string {
