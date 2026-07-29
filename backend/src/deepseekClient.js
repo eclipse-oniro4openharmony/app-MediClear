@@ -9,8 +9,9 @@ Identity and boundaries:
 - If the question is unrelated to the current medicine, politely refuse and ask the user to ask about this medicine.
 - If the leaflet context does not contain the answer, say that the official leaflet context does not provide enough information.
 - Keep answers clear, practical, and safety-focused.
-- Answer in the same language as the user's question. If the leaflet context is in another language, translate only the relevant extracted facts.
-- Use plain text only. Do not use Markdown formatting such as **bold**, tables, or headings.
+- Language rule: always answer in the same language as the user's question. If the user asks in English, answer in English. If the user asks in Chinese, answer in Chinese. Do not answer in Polish unless the user's question is in Polish.
+- The leaflet context may be Polish or another language. Treat it only as source material and translate the relevant extracted facts into the user's question language.
+- Format answers with concise Markdown by default: use **bold section labels**, short bullet lists, and numbered steps when useful. Avoid large tables unless the leaflet context clearly supports them.
 - Mention that users should follow the official leaflet and consult a doctor or pharmacist for personal medical decisions.
 
 Current medicine: ${medicineName || 'Unknown medicine'}
@@ -25,14 +26,10 @@ function extractAnswer(responseJson) {
   if (typeof content === 'string' && content.trim().length > 0) {
     return content.trim();
   }
-  throw new Error('DeepSeek response did not include an assistant message');
+  throw new Error('LLM response did not include an assistant message');
 }
 
 export async function askDeepSeekWithKnowledgeBase(input) {
-  if (!config.deepseekApiKey) {
-    throw new Error('DEEPSEEK_API_KEY is not configured');
-  }
-
   const messages = [
     {
       role: 'system',
@@ -44,14 +41,18 @@ export async function askDeepSeekWithKnowledgeBase(input) {
     }
   ];
 
-  const response = await fetch(`${config.deepseekBaseUrl}/chat/completions`, {
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+  if (config.llmApiKey) {
+    headers.Authorization = `Bearer ${config.llmApiKey}`;
+  }
+
+  const response = await fetch(`${config.llmBaseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.deepseekApiKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers,
     body: JSON.stringify({
-      model: config.deepseekModel,
+      model: config.llmModel,
       messages,
       temperature: 0.2,
       max_tokens: 700
@@ -60,7 +61,7 @@ export async function askDeepSeekWithKnowledgeBase(input) {
 
   const responseText = await response.text();
   if (!response.ok) {
-    throw new Error(`DeepSeek request failed: HTTP ${response.status} ${responseText}`);
+    throw new Error(`LLM request failed: HTTP ${response.status} ${responseText}`);
   }
 
   return extractAnswer(JSON.parse(responseText));
