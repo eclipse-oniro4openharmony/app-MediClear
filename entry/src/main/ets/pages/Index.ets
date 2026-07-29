@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { MediClearDatabase } from '../database/MediClearDatabase';
 import { RplMedicineDAO } from '../database/RplMedicineDAO';
 import { RplMedicineRecord } from '../database/RplMedicineRecord';
+import { CoreVisionOcrService } from '../services/CoreVisionOcrService';
 import { PaddleOcrService } from '../services/PaddleOcrService';
 import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
 
@@ -1318,12 +1319,12 @@ struct Index {
 
   private async startMedicineGuideUpload(sourceType: string): Promise<void> {
     this.showUploadSheet = false;
-    this.uploadState = 'Extracting text with PaddleOCR...';
+    this.uploadState = 'Extracting medicine guide text...';
     const guideUri = this.selectedGuideUri;
     if (sourceType === 'camera') {
-      this.uploadSource = 'Photo captured. PaddleOCR is extracting text from the medicine image.\nURI: ' + guideUri;
+      this.uploadSource = 'Photo captured. MediClear is extracting text from the medicine image.\nURI: ' + guideUri;
     } else if (sourceType === 'gallery') {
-      this.uploadSource = 'Photo selected. PaddleOCR is extracting text from the medicine image.\nURI: ' + guideUri;
+      this.uploadSource = 'Photo selected. MediClear is extracting text from the medicine image.\nURI: ' + guideUri;
     } else {
       this.uploadSource = 'File uploaded. PaddleOCR is extracting text from the medicine guide.\nURI: ' + guideUri;
     }
@@ -1340,7 +1341,8 @@ struct Index {
       const matches = await dao.searchByOcrText(ocrText);
       if (matches.length === 0) {
         this.uploadState = 'No local RPL match found';
-        this.uploadSource = 'OCR text: ' + ocrText + '\nNo matching local RPL seed record was found.';
+        this.uploadSource = 'OCR text:\n' + ocrText + '\n\nSearch terms:\n' + dao.getDebugSearchTerms(ocrText) +
+          '\n\nNo matching local RPL record was found.';
         return;
       }
 
@@ -1351,7 +1353,7 @@ struct Index {
       this.selectedGuide = 0;
     } catch (err) {
       console.error('[MediClearOCR] OCR failed: ' + JSON.stringify(err));
-      this.uploadState = 'PaddleOCR extraction unavailable';
+      this.uploadState = 'Text extraction unavailable';
       this.uploadSource = 'MediClear could not extract text from this file.\nError: ' + JSON.stringify(err);
     }
   }
@@ -1359,6 +1361,23 @@ struct Index {
   private async extractTextWithPaddleOcr(uri: string, sourceType: string): Promise<string> {
     if (uri.length === 0) {
       return '';
+    }
+
+    const lowerUri = uri.toLowerCase();
+    const isImageSource = (sourceType === 'camera' || sourceType === 'gallery') && !lowerUri.endsWith('.pdf');
+    if (isImageSource) {
+      try {
+        this.uploadState = 'OCR 2/4 Recognizing text locally with Core Vision...';
+        const coreVisionService = new CoreVisionOcrService();
+        const localText = await coreVisionService.extractTextFromImage(uri);
+        if (localText.trim().length > 0) {
+          console.info('[MediClearCoreVisionOCR] local OCR succeeded');
+          return localText;
+        }
+        console.warn('[MediClearCoreVisionOCR] empty local OCR result, falling back to PaddleOCR');
+      } catch (err) {
+        console.error('[MediClearCoreVisionOCR] local OCR failed, falling back to PaddleOCR: ' + JSON.stringify(err));
+      }
     }
 
     const service = new PaddleOcrService();
@@ -1447,10 +1466,10 @@ struct Index {
     parsed.leafletUrl = record.leafletUrl;
     parsed.characteristicUrl = record.characteristicUrl;
     parsed.rplIdentifier = record.rplIdentifier;
-    parsed.productId = record.id.toString();
+    parsed.productId = this.extractRplEndpointId(record);
     parsed.matchedKeywords = this.buildMatchedKeywords(this.extractedOcrText, record);
     parsed.matchedPackage = record.packageInfo;
-    parsed.sourceNote = 'Source: local MediClear RDB match. RPL identifier: ' + record.rplIdentifier + '. Product endpoint id: ' + record.id.toString() + '.';
+    parsed.sourceNote = 'Source: local MediClear RDB match. RPL identifier: ' + record.rplIdentifier + '. Product endpoint id: ' + parsed.productId + '.';
     if (matchedName.indexOf('espumisan') < 0) {
       parsed.howToTake = 'Open the official patient leaflet\nFollow the dose prescribed by your doctor or pharmacist\nDo not change dose based only on package OCR\nUse reminders only after confirming the plan';
       parsed.contraindications = 'Check the official leaflet before use\nDo not use if allergic to ' + record.commonName;
@@ -1464,26 +1483,107 @@ struct Index {
     }
   }
 
-  private buildMatchedKeywords(ocrText: string, record: RplMedicineRecord): string {
-    const normalizedOcr = ocrText.toLowerCase();
-    const tokens = record.searchText.toLowerCase().split(' ');
-    const matches: string[] = [];
-    for (let index = 0; index < tokens.length; index++) {
-      const token = tokens[index].trim();
-      if (token.length < 3) {
-        continue;
-      }
-      if (normalizedOcr.indexOf(token) >= 0 && matches.indexOf(token) < 0) {
-        matches.push(token);
-      }
-      if (matches.length >= 8) {
-        break;
-      }
+  private extractRplEndpointId(record: RplMedicineRecord): string {
+    const leafletId = this.extractRplEndpointIdFromUrl(record.leafletUrl);
+    if (leafletId.length > 0) {
+      return leafletId;
     }
+
+    const characteristicId = this.extractRplEndpointIdFromUrl(record.characteristicUrl);
+    if (characteristicId.length > 0) {
+      return characteristicId;
+    }
+
+    return record.id.toString();
+  }
+
+  private extractRplEndpointIdFromUrl(url: string): string {
+    const marker = '/medicinal-products/';
+    const start = url.indexOf(marker);
+    if (start < 0) {
+      return '';
+    }
+
+    const idStart = start + marker.length;
+    const tail = url.substring(idStart);
+    const slash = tail.indexOf('/');
+    if (slash < 0) {
+      return tail;
+    }
+    return tail.substring(0, slash);
+  }
+
+  private buildMatchedKeywords(ocrText: string, record: RplMedicineRecord): string {
+    const normalizedOcr = this.normalizeMatchText(ocrText);
+    const matches: string[] = [];
+
+    this.appendMatchedKeyword(matches, normalizedOcr, record.name);
+    this.appendMatchedKeyword(matches, normalizedOcr, record.commonName);
+    this.appendMatchedKeyword(matches, normalizedOcr, record.activeSubstance);
+    this.appendMatchedKeyword(matches, normalizedOcr, record.strength);
+    this.appendMatchedPackageCode(matches, normalizedOcr, record.packageInfo);
+
     if (matches.length === 0) {
       return record.name + ', ' + record.commonName + ', ' + record.strength;
     }
     return matches.join(', ');
+  }
+
+  private appendMatchedKeyword(matches: string[], normalizedOcr: string, value: string): void {
+    const keyword = value.trim();
+    if (keyword.length === 0) {
+      return;
+    }
+
+    const normalizedKeyword = this.normalizeMatchText(keyword);
+    const parts = normalizedKeyword.split(' ');
+    for (let index = 0; index < parts.length; index++) {
+      const part = parts[index].trim();
+      if (part.length < 4 && !this.isNumericKeyword(part)) {
+        continue;
+      }
+      if (normalizedOcr.indexOf(part) >= 0 && matches.indexOf(keyword) < 0) {
+        matches.push(keyword);
+        return;
+      }
+    }
+  }
+
+  private appendMatchedPackageCode(matches: string[], normalizedOcr: string, packageInfo: string): void {
+    const normalizedPackage = this.normalizeMatchText(packageInfo);
+    const parts = normalizedPackage.split(' ');
+    for (let index = 0; index < parts.length; index++) {
+      const part = parts[index].trim();
+      if (!this.isLongNumericKeyword(part)) {
+        continue;
+      }
+      if (normalizedOcr.indexOf(part) >= 0 && matches.indexOf(part) < 0) {
+        matches.push(part);
+        return;
+      }
+    }
+  }
+
+  private normalizeMatchText(text: string): string {
+    return text.toLowerCase()
+      .replace(/ą/g, 'a')
+      .replace(/ć/g, 'c')
+      .replace(/ę/g, 'e')
+      .replace(/ł/g, 'l')
+      .replace(/ń/g, 'n')
+      .replace(/ó/g, 'o')
+      .replace(/ś/g, 's')
+      .replace(/ź/g, 'z')
+      .replace(/ż/g, 'z')
+      .replace(/[^a-z0-9]+/g, ' ');
+  }
+
+  private isNumericKeyword(value: string): boolean {
+    return /^[0-9]+$/.test(value);
+  }
+
+  private isLongNumericKeyword(value: string): boolean {
+    return /^[0-9]{8,}$/.test(value);
   }
 
   private sampleMedicineGuideText(): string {
