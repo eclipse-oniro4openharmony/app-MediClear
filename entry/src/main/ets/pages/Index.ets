@@ -99,6 +99,7 @@ struct Index {
   @State currentTab: number = 0;
   @State selectedGuide: number = 0;
   @State showUploadSheet: boolean = false;
+  @State showBasicsForm: boolean = false;
   @State uploadState: string = 'No medicine guide scanned yet';
   @State uploadSource: string = 'Tap Upload Medicine Guide to scan a medicine leaflet.';
   @State selectedGuideUri: string = '';
@@ -131,6 +132,45 @@ struct Index {
   @State chatQuestion: string = '';
   @State chatMessages: MedicineChatMessage[] = [];
   @State chatStatus: string = 'No active knowledge base';
+  @State basicGender: string = '';
+  @State basicAge: string = '';
+  @State basicWeight: string = '';
+  @State basicSymptoms: string = '';
+  @State basicAllergyHistory: string = '';
+  @State basicSpecialStatus: string = '';
+  @State basicCustomAllergy: string = '';
+
+  private sexOptions: SelectOption[] = [
+    { value: 'Male' },
+    { value: 'Female' }
+  ];
+
+  private allergyOptions: SelectOption[] = [
+    { value: 'None' },
+    { value: 'Penicillin' },
+    { value: 'Amoxicillin' },
+    { value: 'Cephalosporins' },
+    { value: 'Sulfonamides' },
+    { value: 'Ibuprofen' },
+    { value: 'Aspirin' },
+    { value: 'Naproxen' },
+    { value: 'Paracetamol' },
+    { value: 'Codeine' },
+    { value: 'Lidocaine' },
+    { value: 'Iodine contrast' },
+    { value: 'Lactose' },
+    { value: 'Gluten' },
+    { value: 'Peanuts' },
+    { value: 'Tree nuts' },
+    { value: 'Eggs' },
+    { value: 'Milk protein' },
+    { value: 'Soy' },
+    { value: 'Shellfish' },
+    { value: 'Gelatin' },
+    { value: 'Latex' },
+    { value: 'Pollen' },
+    { value: 'Dust mites' }
+  ];
 
   private actions: ActionItem[] = [
     new ActionItem('Upload Medicine Guide', 'Take photo or upload file', $r('app.media.bi_cloud_upload'), '#009F9A'),
@@ -171,7 +211,7 @@ struct Index {
   build() {
     Stack() {
       Column() {
-        if (this.currentTab === 0) {
+        if (this.currentTab === 0 && !this.showBasicsForm) {
           this.Header()
         }
 
@@ -181,7 +221,11 @@ struct Index {
           Scroll() {
             Column({ space: 18 }) {
               if (this.currentTab === 0) {
-                this.HomeView()
+                if (this.showBasicsForm) {
+                  this.BasicsFormView()
+                } else {
+                  this.HomeView()
+                }
               } else if (this.currentTab === 1) {
                 this.HistoryView()
               } else if (this.currentTab === 2) {
@@ -190,7 +234,7 @@ struct Index {
                 this.ProfileView()
               }
             }
-            .padding({ left: 20, right: 20, top: this.currentTab === 0 ? 8 : 18, bottom: 92 })
+            .padding({ left: 20, right: 20, top: this.currentTab === 0 && !this.showBasicsForm ? 8 : 18, bottom: 92 })
             .width('100%')
           }
           .scrollBar(BarState.Off)
@@ -257,6 +301,8 @@ struct Index {
       }
       .width('100%')
 
+      this.SetupProfileCard()
+
       Column({ space: 12 }) {
         ForEach(this.actions, (item: ActionItem, index: number) => {
           this.ActionRow(item, index)
@@ -274,6 +320,369 @@ struct Index {
       this.GuideTabs()
     }
     .width('100%')
+  }
+
+  @Builder
+  SetupProfileCard() {
+    Row({ space: 14 }) {
+      this.IconBubble($r('app.media.bi_person_heart'), '#E8F8F6', '#008A88')
+      Column({ space: 6 }) {
+        Row() {
+          Text(this.hasCompletedBasics() ? 'Basics ready' : 'Complete your basics')
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#111827')
+            .layoutWeight(1)
+          Text(this.hasCompletedBasics() ? 'Ready' : 'First use')
+            .fontSize(11)
+            .fontWeight(FontWeight.Medium)
+            .fontColor('#007D83')
+            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+            .backgroundColor('#DDF7F5')
+            .borderRadius(10)
+        }
+        .width('100%')
+        Text(this.hasCompletedBasics() ? 'Your health context is saved for medicine leaflet answers. Tap here anytime to edit it.' : 'Add sex, age, weight, current symptoms, allergy history, and special status so the chat assistant can explain medicine leaflet warnings with better context.')
+          .fontSize(13)
+          .fontColor('#42566F')
+          .lineHeight(18)
+          .width('100%')
+        if (this.hasCompletedBasics()) {
+          Text('Edit')
+            .fontSize(13)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#008A88')
+            .alignSelf(ItemAlign.Start)
+        }
+      }
+      .layoutWeight(1)
+      this.ChevronRight('#008A88')
+    }
+    .padding(14)
+    .backgroundColor('#FFFFFF')
+    .border({ width: 1, color: '#B7DFDC' })
+    .borderRadius(12)
+    .shadow({ radius: 10, color: '#10006472', offsetY: 4 })
+    .width('100%')
+    .stateStyles({
+      pressed: {
+        .opacity(0.86)
+        .scale({ x: 0.98, y: 0.98 })
+      }
+    })
+    .onClick(() => {
+      this.showBasicsForm = true;
+    })
+  }
+
+  @Builder
+  BasicsFormView() {
+    Column({ space: 16 }) {
+      this.BasicsFormTop()
+      Column({ space: 6 }) {
+        Text('Personal basics')
+          .fontSize(24)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
+          .width('100%')
+        Text('This helps MediClear explain leaflet warnings with better context. It does not diagnose or prescribe.')
+          .fontSize(14)
+          .fontColor('#42566F')
+          .lineHeight(20)
+          .width('100%')
+      }
+      .width('100%')
+
+      Column({ space: 14 }) {
+        this.BasicsSexPicker()
+        this.BasicsTextInput('Age', 'e.g. 22', this.basicAge, 'age', true)
+        this.BasicsTextInput('Weight(kg)', 'e.g. 60', this.basicWeight, 'weight', true)
+        this.BasicsTextArea('Current symptoms', 'Describe what you feel now, such as stomach pain, fever, bloating, duration, and severity.', this.basicSymptoms, 'symptoms')
+        this.BasicsAllergyPicker()
+        this.BasicsTextInput('Special status', 'e.g. pregnant, trying to conceive, breastfeeding, none', this.basicSpecialStatus, 'specialStatus', false)
+      }
+      .padding(16)
+      .backgroundColor(Color.White)
+      .borderRadius(12)
+      .shadow({ radius: 10, color: '#10006472', offsetY: 4 })
+      .width('100%')
+
+      Row({ space: 10 }) {
+        Button('Confirm')
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Color.White)
+          .backgroundColor(this.hasRequiredBasics() ? '#009F9A' : '#9CCFCC')
+          .borderRadius(10)
+          .height(48)
+          .layoutWeight(1)
+          .enabled(this.hasRequiredBasics())
+          .stateStyles({
+            pressed: {
+              .opacity(0.82)
+              .scale({ x: 0.98, y: 0.98 })
+            }
+          })
+          .onClick(() => {
+            this.showBasicsForm = false;
+          })
+        Button('Cancel')
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .fontColor('#007D83')
+          .backgroundColor('#FFFFFF')
+          .border({ width: 1, color: '#B7DFDC' })
+          .borderRadius(10)
+          .height(48)
+          .layoutWeight(1)
+          .stateStyles({
+            pressed: {
+              .opacity(0.82)
+              .scale({ x: 0.98, y: 0.98 })
+            }
+          })
+          .onClick(() => {
+            this.showBasicsForm = false;
+          })
+      }
+      .width('100%')
+
+      this.NoteCard()
+    }
+    .width('100%')
+  }
+
+  @Builder
+  BasicsFormTop() {
+    Row() {
+      Stack() {
+        Image($r('app.media.bi_chevron_left'))
+          .width(22)
+          .height(22)
+          .fillColor('#20324A')
+      }
+      .width(40)
+      .height(40)
+      .borderRadius(20)
+      .stateStyles({
+        pressed: {
+          .opacity(0.82)
+          .scale({ x: 0.94, y: 0.94 })
+        }
+      })
+      .onClick(() => {
+        this.showBasicsForm = false;
+      })
+      Text('Basics')
+        .fontSize(19)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111827')
+        .textAlign(TextAlign.Center)
+        .layoutWeight(1)
+      this.LogoMark(30)
+    }
+    .width('100%')
+    .height(42)
+  }
+
+  @Builder
+  BasicsTextInput(label: string, placeholder: string, value: string, field: string, required: boolean) {
+    Column({ space: 7 }) {
+      this.RequiredFieldLabel(label, required)
+      TextInput({ placeholder: placeholder, text: value })
+        .fontSize(14)
+        .fontColor('#111827')
+        .placeholderColor('#8A98A8')
+        .height(46)
+        .padding({ left: 12, right: 12 })
+        .backgroundColor('#F8FCFC')
+        .border({ width: 1, color: '#DCEBED' })
+        .borderRadius(10)
+        .onChange((input: string) => {
+          this.updateBasicsField(field, input);
+        })
+    }
+    .width('100%')
+  }
+
+  @Builder
+  BasicsSexPicker() {
+    Column({ space: 9 }) {
+      this.RequiredFieldLabel('Sex', true)
+
+      Select(this.sexOptions)
+        .value(this.basicGender.length > 0 ? this.basicGender : 'Select sex')
+        .font({ size: 14, weight: FontWeight.Regular })
+        .fontColor(this.basicGender.length > 0 ? '#111827' : '#8A98A8')
+        .selectedOptionFont({ size: 14, weight: FontWeight.Medium })
+        .selectedOptionFontColor('#008A88')
+        .optionFont({ size: 14, weight: FontWeight.Regular })
+        .optionFontColor('#263244')
+        .selected(this.basicGender === 'Female' ? 1 : 0)
+        .onSelect((index: number, value: string) => {
+          this.basicGender = value;
+        })
+      .menuAlign(MenuAlignType.START)
+      .optionWidth(OptionWidthMode.FIT_TRIGGER)
+      .width('100%')
+      .height(46)
+      .padding({ left: 12, right: 12 })
+      .backgroundColor('#F8FCFC')
+      .border({ width: 1, color: '#DCEBED' })
+      .borderRadius(10)
+      .stateStyles({
+        pressed: {
+          .opacity(0.86)
+          .scale({ x: 0.98, y: 0.98 })
+        }
+      })
+    }
+    .width('100%')
+  }
+
+  @Builder
+  BasicsTextArea(label: string, placeholder: string, value: string, field: string) {
+    Column({ space: 7 }) {
+      this.RequiredFieldLabel(label, true)
+      TextArea({ placeholder: placeholder, text: value })
+        .fontSize(14)
+        .fontColor('#111827')
+        .placeholderColor('#8A98A8')
+        .height(108)
+        .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+        .backgroundColor('#F8FCFC')
+        .border({ width: 1, color: '#DCEBED' })
+        .borderRadius(10)
+        .onChange((input: string) => {
+          this.updateBasicsField(field, input);
+        })
+    }
+    .width('100%')
+  }
+
+  @Builder
+  BasicsAllergyPicker() {
+    Column({ space: 9 }) {
+      this.RequiredFieldLabel('Allergy history', true)
+
+      Select(this.allergyOptions)
+        .value('Select from common allergies')
+        .font({ size: 14, weight: FontWeight.Regular })
+        .fontColor('#42566F')
+        .selectedOptionFont({ size: 14, weight: FontWeight.Medium })
+        .selectedOptionFontColor('#008A88')
+        .optionFont({ size: 14, weight: FontWeight.Regular })
+        .optionFontColor('#263244')
+        .onSelect((index: number, value: string) => {
+          this.appendBasicAllergy(value);
+        })
+      .menuAlign(MenuAlignType.START)
+      .optionWidth(OptionWidthMode.FIT_TRIGGER)
+      .optionHeight(220)
+      .width('100%')
+      .height(46)
+      .padding({ left: 12, right: 12 })
+      .backgroundColor('#F8FCFC')
+      .border({ width: 1, color: '#DCEBED' })
+      .borderRadius(10)
+      .stateStyles({
+        pressed: {
+          .opacity(0.86)
+          .scale({ x: 0.98, y: 0.98 })
+        }
+      })
+
+      if (this.basicAllergyHistory.length > 0) {
+        Flex({ wrap: FlexWrap.Wrap, direction: FlexDirection.Row }) {
+          ForEach(this.getBasicAllergyItems(), (item: string) => {
+            this.SelectedAllergyChip(item)
+          }, (item: string) => item)
+        }
+        .width('100%')
+      }
+
+      Row({ space: 8 }) {
+        TextInput({ placeholder: 'Add custom allergy', text: this.basicCustomAllergy })
+          .fontSize(14)
+          .fontColor('#111827')
+          .placeholderColor('#8A98A8')
+          .height(42)
+          .padding({ left: 12, right: 12 })
+          .backgroundColor('#FFFFFF')
+          .border({ width: 1, color: '#DCEBED' })
+          .borderRadius(10)
+          .layoutWeight(1)
+          .onChange((input: string) => {
+            this.basicCustomAllergy = input;
+          })
+        Stack() {
+          Image($r('app.media.bi_plus_lg'))
+            .width(18)
+            .height(18)
+            .fillColor(Color.White)
+        }
+          .backgroundColor('#009F9A')
+          .borderRadius(10)
+          .width(42)
+          .height(42)
+          .stateStyles({
+            pressed: {
+              .opacity(0.82)
+              .scale({ x: 0.94, y: 0.94 })
+            }
+          })
+          .onClick(() => {
+            this.addCustomBasicAllergy();
+          })
+      }
+      .width('100%')
+    }
+    .width('100%')
+  }
+
+  @Builder
+  RequiredFieldLabel(label: string, required: boolean) {
+    Row({ space: 3 }) {
+      if (required) {
+        Text('*')
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#EF4444')
+      }
+      Text(label)
+        .fontSize(14)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#263244')
+    }
+    .width('100%')
+  }
+
+  @Builder
+  SelectedAllergyChip(label: string) {
+    Row({ space: 6 }) {
+      Text(label)
+        .fontSize(12)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#007D83')
+      Image($r('app.media.bi_x'))
+        .width(14)
+        .height(14)
+        .fillColor('#007D83')
+    }
+      .padding({ left: 12, right: 9, top: 7, bottom: 7 })
+      .backgroundColor('#E8F8F6')
+      .border({ width: 1, color: '#B7DFDC' })
+      .borderRadius(16)
+      .margin({ right: 8, bottom: 8 })
+      .stateStyles({
+        pressed: {
+          .opacity(0.82)
+          .scale({ x: 0.96, y: 0.96 })
+        }
+      })
+      .onClick(() => {
+        this.removeBasicAllergy(label);
+      })
   }
 
   @Builder
@@ -1123,25 +1532,7 @@ struct Index {
   @Builder
   ProfileView() {
     Column({ space: 16 }) {
-      this.PageTop('Profile')
-      Row({ space: 16 }) {
-        this.ProfileAvatarIcon()
-
-        Column({ space: 5 }) {
-          Text('Chen Song')
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#111827')
-          Text('Private & local\nmedicine assistant')
-            .fontSize(14)
-            .fontColor('#445267')
-        }
-        .layoutWeight(1)
-      }
-      .padding(16)
-      .backgroundColor('#DDF7F5')
-      .borderRadius(12)
-
+      this.PageTop('Settings')
       Text('Settings')
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
@@ -1149,7 +1540,6 @@ struct Index {
         .width('100%')
 
       Column({ space: 0 }) {
-        this.SettingRow('Language', 'English', $r('app.media.bi_globe'), '#EAF2FF', '#1767C5')
         this.SettingRow('Reminder Notifications', 'On', $r('app.media.bi_bell'), '#EEF5FF', '#1767C5')
         this.SettingRow('Data & Privacy', '', $r('app.media.bi_shield_heart'), '#E8F8F6', '#008A88')
         this.SettingRow('Export History', '', $r('app.media.bi_box_arrow_up'), '#F1EDFF', '#6554D9')
@@ -1665,7 +2055,7 @@ struct Index {
       this.TabButton('History', 1, $r('app.media.bi_clock_history'))
       this.TabButton('Reminders', 2, $r('app.media.bi_bell'))
       this.TabButton('Chat', 3, $r('app.media.bi_chat_dots'))
-      this.TabButton('Profile', 4, $r('app.media.bi_person_heart'))
+      this.TabButton('Settings', 4, $r('app.media.bi_gear'))
     }
     .height(72)
     .width('100%')
@@ -1697,6 +2087,7 @@ struct Index {
       }
     })
     .onClick(() => {
+      this.showBasicsForm = false;
       this.currentTab = index;
     })
   }
@@ -1903,6 +2294,96 @@ struct Index {
 
   private appendChatMessage(role: string, text: string): void {
     this.chatMessages = this.chatMessages.concat([new MedicineChatMessage(role, text)]);
+  }
+
+  private hasCompletedBasics(): boolean {
+    return this.hasRequiredBasics();
+  }
+
+  private hasRequiredBasics(): boolean {
+    return this.basicGender.trim().length > 0 &&
+      this.basicAge.trim().length > 0 &&
+      this.basicWeight.trim().length > 0 &&
+      this.basicSymptoms.trim().length > 0 &&
+      this.basicAllergyHistory.trim().length > 0;
+  }
+
+  private appendBasicAllergy(value: string): void {
+    const allergy = value.trim();
+    if (allergy.length === 0) {
+      return;
+    }
+
+    if (allergy === 'None') {
+      this.basicAllergyHistory = 'None';
+      return;
+    }
+
+    if (this.basicAllergyHistory === 'None') {
+      this.basicAllergyHistory = '';
+    }
+
+    const current = this.basicAllergyHistory.trim();
+    const normalizedCurrent = ',' + current.toLowerCase() + ',';
+    if (normalizedCurrent.indexOf(',' + allergy.toLowerCase() + ',') >= 0) {
+      return;
+    }
+
+    this.basicAllergyHistory = current.length === 0 ? allergy : current + ', ' + allergy;
+  }
+
+  private removeBasicAllergy(value: string): void {
+    const allergy = value.trim().toLowerCase();
+    if (allergy.length === 0) {
+      return;
+    }
+
+    const kept: string[] = [];
+    const items = this.getBasicAllergyItems();
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index].trim();
+      if (item.length > 0 && item.toLowerCase() !== allergy) {
+        kept.push(item);
+      }
+    }
+    this.basicAllergyHistory = kept.join(', ');
+  }
+
+  private getBasicAllergyItems(): string[] {
+    const result: string[] = [];
+    const parts = this.basicAllergyHistory.split(',');
+    for (let index = 0; index < parts.length; index++) {
+      const item = parts[index].trim();
+      if (item.length > 0) {
+        result.push(item);
+      }
+    }
+    return result;
+  }
+
+  private addCustomBasicAllergy(): void {
+    const allergy = this.basicCustomAllergy.trim();
+    if (allergy.length === 0) {
+      return;
+    }
+    this.appendBasicAllergy(allergy);
+    this.basicCustomAllergy = '';
+  }
+
+  private updateBasicsField(field: string, value: string): void {
+    if (field === 'gender') {
+      this.basicGender = value;
+    } else if (field === 'age') {
+      this.basicAge = value;
+    } else if (field === 'weight') {
+      this.basicWeight = value;
+    } else if (field === 'symptoms') {
+      this.basicSymptoms = value;
+    } else if (field === 'allergyHistory') {
+      this.basicAllergyHistory = value;
+    } else if (field === 'specialStatus') {
+      this.basicSpecialStatus = value;
+    }
   }
 
   private hasActiveChatMedicine(): boolean {
