@@ -129,9 +129,7 @@ struct Index {
   @State backendKnowledgeDocumentId: string = '';
   @State backendKnowledgeTextLength: string = '';
   @State chatQuestion: string = '';
-  @State chatMessages: MedicineChatMessage[] = [
-    new MedicineChatMessage('assistant', 'Take a photo of a medicine or choose a medicine with a ready knowledge base, then ask questions based on the official leaflet.')
-  ];
+  @State chatMessages: MedicineChatMessage[] = [];
   @State chatStatus: string = 'No active knowledge base';
 
   private actions: ActionItem[] = [
@@ -748,22 +746,27 @@ struct Index {
       Scroll() {
         Column({ space: 16 }) {
           this.ChatIntroCard()
-          this.ChatCurrentMedicineCard()
-          this.ChatPhotoCard()
-          this.ChatMessages()
-          this.ChatSuggestions()
+          if (this.hasActiveChatMedicine()) {
+            this.ChatCurrentMedicineCard()
+            this.ChatMessages()
+            this.ChatSuggestions()
+          } else {
+            this.ChatPhotoCard()
+          }
         }
         .padding({ left: 20, right: 20, top: 12, bottom: 18 })
         .width('100%')
       }
       .scrollBar(BarState.Off)
       .layoutWeight(1)
-      Column() {
-        this.ChatInputBar()
+      if (this.hasActiveChatMedicine()) {
+        Column() {
+          this.ChatInputBar()
+        }
+        .padding({ left: 20, right: 20, top: 10, bottom: 12 })
+        .backgroundColor('#F6FBFC')
+        .width('100%')
       }
-      .padding({ left: 20, right: 20, top: 10, bottom: 12 })
-      .backgroundColor('#F6FBFC')
-      .width('100%')
     }
     .width('100%')
     .layoutWeight(1)
@@ -782,16 +785,17 @@ struct Index {
       .layoutWeight(1)
       .alignItems(VerticalAlign.Center)
       Stack() {
-        Text('New')
-          .fontSize(12)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#008A88')
-          .padding({ left: 10, right: 10, top: 5, bottom: 5 })
-          .backgroundColor('#DDF7F5')
-          .borderRadius(14)
+        Image($r('app.media.chat_new_art'))
+          .width(34)
+          .height(34)
+          .objectFit(ImageFit.Contain)
+          .borderRadius(12)
       }
       .width(44)
       .height(44)
+      .onClick(() => {
+        this.startNewMedicineChat();
+      })
     }
     .width('100%')
     .height(64)
@@ -807,7 +811,9 @@ struct Index {
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
           .fontColor('#1767C5')
-        Text('Get answers based on official leaflet.')
+        Text(this.hasActiveChatMedicine() ?
+          'If the medicine match looks wrong, tap the plus button at top right to start over.' :
+          'Take a photo first to load the official leaflet knowledge base.')
           .fontSize(13)
           .fontColor('#536175')
       }
@@ -1771,6 +1777,29 @@ struct Index {
 
   private appendChatMessage(role: string, text: string): void {
     this.chatMessages = this.chatMessages.concat([new MedicineChatMessage(role, text)]);
+  }
+
+  private hasActiveChatMedicine(): boolean {
+    return this.productId.length > 0 || this.backendKnowledgeDocumentId.length > 0;
+  }
+
+  private startNewMedicineChat(): void {
+    this.selectedGuideUri = '';
+    this.extractedOcrText = '';
+    this.productId = '';
+    this.rplIdentifier = '';
+    this.matchedKeywords = '';
+    this.matchedPackage = '';
+    this.leafletUrl = '';
+    this.characteristicUrl = '';
+    this.backendKnowledgeStatus = '';
+    this.backendKnowledgeDocumentId = '';
+    this.backendKnowledgeTextLength = '';
+    this.chatQuestion = '';
+    this.chatMessages = [];
+    this.chatStatus = 'No active knowledge base';
+    this.uploadState = 'No medicine guide scanned yet';
+    this.uploadSource = 'Tap the camera card to scan a medicine package.';
   }
 
   private async sendMedicineChatQuestion(): Promise<void> {
