@@ -330,6 +330,12 @@ struct Index {
           .borderRadius(8)
           .height(42)
           .layoutWeight(1)
+          .stateStyles({
+            pressed: {
+              .opacity(0.82)
+              .scale({ x: 0.98, y: 0.98 })
+            }
+          })
           .onClick(() => {
             this.takeMedicineGuidePhoto();
           })
@@ -341,6 +347,12 @@ struct Index {
           .borderRadius(8)
           .height(42)
           .layoutWeight(1)
+          .stateStyles({
+            pressed: {
+              .opacity(0.82)
+              .scale({ x: 0.98, y: 0.98 })
+            }
+          })
           .onClick(() => {
             this.selectMedicineGuideFile();
           })
@@ -371,6 +383,12 @@ struct Index {
             .backgroundColor('#F1F5F9')
             .borderRadius(8)
             .height(36)
+            .stateStyles({
+              pressed: {
+                .opacity(0.82)
+                .scale({ x: 0.98, y: 0.98 })
+              }
+            })
             .onClick(() => {
               this.showUploadSheet = false;
             })
@@ -397,6 +415,12 @@ struct Index {
           .backgroundColor('#F0FAF9')
           .border({ width: 1, color: '#B7DFDC' })
           .borderRadius(10)
+          .stateStyles({
+            pressed: {
+              .opacity(0.82)
+              .scale({ x: 0.98, y: 0.98 })
+            }
+          })
           .onClick(() => {
             this.selectMedicineGuideFile();
           })
@@ -429,6 +453,12 @@ struct Index {
     .backgroundColor('#F8FCFC')
     .border({ width: 1, color: '#DCEBED' })
     .borderRadius(12)
+    .stateStyles({
+      pressed: {
+        .opacity(0.86)
+        .scale({ x: 0.97, y: 0.97 })
+      }
+    })
     .onClick(() => {
       if (sourceType === 'camera') {
         this.takeMedicineGuidePhoto();
@@ -555,6 +585,12 @@ struct Index {
       .borderRadius(10)
       .height(42)
       .layoutWeight(1)
+      .stateStyles({
+        pressed: {
+          .opacity(0.82)
+          .scale({ x: 0.98, y: 0.98 })
+        }
+      })
       .onClick(() => {
         this.selectedGuide = index;
       })
@@ -600,6 +636,12 @@ struct Index {
         .borderRadius(10)
         .height(54)
         .width('100%')
+        .stateStyles({
+          pressed: {
+            .opacity(0.82)
+            .scale({ x: 0.98, y: 0.98 })
+          }
+        })
         .onClick(() => {
           this.currentTab = 2;
         })
@@ -656,6 +698,12 @@ struct Index {
         .borderRadius(10)
         .height(48)
         .width('100%')
+        .stateStyles({
+          pressed: {
+            .opacity(0.82)
+            .scale({ x: 0.98, y: 0.98 })
+          }
+        })
 
       this.AdherenceCard()
     }
@@ -735,6 +783,12 @@ struct Index {
         .borderRadius(10)
         .height(48)
         .width('100%')
+        .stateStyles({
+          pressed: {
+            .opacity(0.82)
+            .scale({ x: 0.98, y: 0.98 })
+          }
+        })
     }
     .width('100%')
   }
@@ -793,6 +847,13 @@ struct Index {
       }
       .width(44)
       .height(44)
+      .borderRadius(22)
+      .stateStyles({
+        pressed: {
+          .opacity(0.82)
+          .scale({ x: 0.94, y: 0.94 })
+        }
+      })
       .onClick(() => {
         this.startNewMedicineChat();
       })
@@ -924,6 +985,12 @@ struct Index {
     .border({ width: 1, color: '#DCEBED' })
     .borderRadius(12)
     .width('100%')
+    .stateStyles({
+      pressed: {
+        .opacity(0.86)
+        .scale({ x: 0.98, y: 0.98 })
+      }
+    })
     .onClick(() => {
       this.takeMedicineGuidePhoto();
     })
@@ -1001,6 +1068,12 @@ struct Index {
       .backgroundColor('#EEF5FF')
       .borderRadius(16)
       .margin({ right: 8, bottom: 8 })
+      .stateStyles({
+        pressed: {
+          .opacity(0.82)
+          .scale({ x: 0.96, y: 0.96 })
+        }
+      })
       .onClick(() => {
         this.chatQuestion = label;
       })
@@ -1029,6 +1102,12 @@ struct Index {
       .width(44)
       .height(44)
       .borderRadius(22)
+      .stateStyles({
+        pressed: {
+          .opacity(0.78)
+          .scale({ x: 0.92, y: 0.92 })
+        }
+      })
       .onClick(() => {
         this.sendMedicineChatQuestion();
       })
@@ -1140,6 +1219,12 @@ struct Index {
     .padding({ left: 14, right: 14 })
     .borderRadius(10)
     .backgroundColor(index === 0 ? '#009F9A' : (item.title === 'My Reminders' ? '#EEF5FF' : '#F0EDFF'))
+    .stateStyles({
+      pressed: {
+        .opacity(0.84)
+        .scale({ x: 0.98, y: 0.98 })
+      }
+    })
     .onClick(() => {
       if (item.title === 'Upload Medicine Guide') {
         this.showUploadSheet = true;
@@ -1175,6 +1260,12 @@ struct Index {
     .borderRadius(12)
     .shadow({ radius: 10, color: '#12006472', offsetY: 4 })
     .width('100%')
+    .stateStyles({
+      pressed: {
+        .opacity(0.88)
+        .scale({ x: 0.98, y: 0.98 })
+      }
+    })
   }
 
   @Builder
@@ -1204,6 +1295,11 @@ struct Index {
     }
     .padding(14)
     .border({ width: { bottom: 1 }, color: '#EEF2F6' })
+    .stateStyles({
+      pressed: {
+        .opacity(0.86)
+      }
+    })
     .onClick(() => {
       this.switchToHistoryMedicine(record);
     })
@@ -1296,6 +1392,12 @@ struct Index {
           .borderRadius(8)
           .height(44)
           .layoutWeight(1)
+          .stateStyles({
+            pressed: {
+              .opacity(0.82)
+              .scale({ x: 0.98, y: 0.98 })
+            }
+          })
         Button('Skip')
           .fontSize(14)
           .fontColor('#111827')
@@ -1304,6 +1406,12 @@ struct Index {
           .borderRadius(8)
           .height(44)
           .layoutWeight(1)
+          .stateStyles({
+            pressed: {
+              .opacity(0.82)
+              .scale({ x: 0.98, y: 0.98 })
+            }
+          })
       }
     }
     .padding(16)
@@ -1457,6 +1565,11 @@ struct Index {
     }
     .padding(14)
     .border({ width: { bottom: 1 }, color: '#EEF2F6' })
+    .stateStyles({
+      pressed: {
+        .opacity(0.86)
+      }
+    })
   }
 
   @Builder
@@ -1473,6 +1586,12 @@ struct Index {
     .padding(14)
     .backgroundColor(Color.White)
     .borderRadius(12)
+    .stateStyles({
+      pressed: {
+        .opacity(0.86)
+        .scale({ x: 0.98, y: 0.98 })
+      }
+    })
   }
 
   @Builder
@@ -1570,6 +1689,13 @@ struct Index {
     .layoutWeight(1)
     .height('100%')
     .justifyContent(FlexAlign.Center)
+    .borderRadius(14)
+    .stateStyles({
+      pressed: {
+        .opacity(0.82)
+        .scale({ x: 0.94, y: 0.94 })
+      }
+    })
     .onClick(() => {
       this.currentTab = index;
     })
