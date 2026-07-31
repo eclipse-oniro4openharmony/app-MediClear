@@ -4,7 +4,7 @@ import { RplMedicineDAO } from '../database/RplMedicineDAO';
 import { RplMedicineRecord } from '../database/RplMedicineRecord';
 import { CoreVisionOcrService } from '../services/CoreVisionOcrService';
 import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
-import { BackendService, BackendChatResponse, BackendDocumentResponse, BackendHealthResponse } from '../services/BackendService';
+import { BackendService, BackendChatResponse, BackendDocumentResponse, BackendHealthResponse, PatientContext } from '../services/BackendService';
 import { MEDICLEAR_BACKEND_BASE_URL } from '../services/BackendConfig';
 import { Markdown, MarkdownController } from '@luvi/lv-markdown-in';
 
@@ -1329,6 +1329,11 @@ struct Index {
           Text(this.backendKnowledgeDocumentId.length > 0 ? 'Knowledge base #' + this.backendKnowledgeDocumentId : this.chatStatus)
             .fontSize(12)
             .fontColor(this.backendKnowledgeDocumentId.length > 0 ? '#007D83' : '#7A8797')
+          Text(this.buildPatientContextSummary())
+            .fontSize(12)
+            .fontColor(this.hasRequiredBasics() ? '#007D83' : '#B45309')
+            .lineHeight(17)
+            .maxLines(2)
         }
         .layoutWeight(1)
       }
@@ -2308,6 +2313,57 @@ struct Index {
       this.basicAllergyHistory.trim().length > 0;
   }
 
+  private buildPatientContext(): PatientContext {
+    return new PatientContext(
+      this.basicGender.trim(),
+      this.basicAge.trim(),
+      this.basicWeight.trim(),
+      this.basicSymptoms.trim(),
+      this.basicAllergyHistory.trim(),
+      this.basicSpecialStatus.trim()
+    );
+  }
+
+  private buildPatientContextSummary(): string {
+    if (!this.hasRequiredBasics()) {
+      return 'Basics not completed - answers use leaflet context only.';
+    }
+
+    let summary = 'Using basics: ' + this.basicGender.trim() + ', age ' + this.basicAge.trim() + ', ' +
+      this.formatWeightKgForSummary();
+    summary += ', symptoms: ' + this.shortenPatientContextValue(this.basicSymptoms.trim(), 34);
+    if (this.hasKnownBasicAllergy()) {
+      summary += ', allergies: ' + this.shortenPatientContextValue(this.basicAllergyHistory.trim(), 28);
+    } else {
+      summary += ', no known allergies';
+    }
+    if (this.basicSpecialStatus.trim().length > 0) {
+      summary += ', special status noted';
+    }
+    return summary;
+  }
+
+  private formatWeightKgForSummary(): string {
+    const weight = this.basicWeight.trim();
+    if (weight.toLowerCase().indexOf('kg') >= 0) {
+      return weight;
+    }
+    return weight + ' kg';
+  }
+
+  private shortenPatientContextValue(value: string, maxLength: number): string {
+    const clean = value.trim().replace(/\s+/g, ' ');
+    if (clean.length <= maxLength) {
+      return clean;
+    }
+    return clean.substring(0, maxLength) + '...';
+  }
+
+  private hasKnownBasicAllergy(): boolean {
+    const normalized = this.basicAllergyHistory.trim().toLowerCase();
+    return normalized.length > 0 && normalized !== 'none' && normalized !== 'no' && normalized !== 'no known allergies';
+  }
+
   private appendBasicAllergy(value: string): void {
     const allergy = value.trim();
     if (allergy.length === 0) {
@@ -2433,7 +2489,8 @@ struct Index {
     this.appendChatMessage('assistant', 'Thinking based on the official leaflet...');
     try {
       const backend = new BackendService();
-      const reply: BackendChatResponse = await backend.askMedicineQuestion(question, documentId, this.medicineName);
+      const reply: BackendChatResponse =
+        await backend.askMedicineQuestion(question, documentId, this.medicineName, this.buildPatientContext());
       const loadingIndex = this.chatMessages.length - 1;
       const updatedMessages = this.chatMessages.slice(0, loadingIndex);
       updatedMessages.push(new MedicineChatMessage('assistant', reply.answer));
@@ -2790,3 +2847,4 @@ struct Index {
     return 'Espumisan 40 mg capsules. Active ingredient: Simeticonum 40 mg. Adults may take 2 capsules 3-4 times daily, before, during, or after meals, and before sleep if needed. Do not use if allergic to simethicone, E110, E218, or any excipient. Consult a clinician if abdominal symptoms are new or persistent. E110 and E218 may cause allergic reactions.';
   }
 }
+
