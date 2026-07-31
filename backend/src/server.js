@@ -50,10 +50,20 @@ const searchSchema = z.object({
   limit: z.number().int().positive().max(50).default(8)
 });
 
+const patientContextSchema = z.object({
+  sex: z.string().optional().default(''),
+  age: z.string().optional().default(''),
+  weightKg: z.string().optional().default(''),
+  currentSymptoms: z.string().optional().default(''),
+  allergyHistory: z.string().optional().default(''),
+  specialStatus: z.string().optional().default('')
+}).default({});
+
 const chatSchema = z.object({
   question: z.string().min(1).max(1000),
   documentId: z.number().int().positive(),
   medicineName: z.string().optional().default(''),
+  patientContext: patientContextSchema,
   limit: z.number().int().positive().max(12).default(6)
 });
 
@@ -152,7 +162,7 @@ app.post('/api/chat', async (request, response, next) => {
     }
 
     const allChunks = await getChunks(input.documentId);
-    const selectedChunks = selectKnowledgeChunks(allChunks, input.question, input.limit);
+    const selectedChunks = selectKnowledgeChunks(allChunks, input.question, input.patientContext, input.limit);
 
     const contextText = selectedChunks
       .map((chunk) => {
@@ -160,11 +170,13 @@ app.post('/api/chat', async (request, response, next) => {
         return `Page ${chunk.page_number ?? 'unknown'}${sectionLabel ? `, section ${sectionLabel}` : ''}:\n${chunk.chunk_text}`;
       })
       .join('\n\n---\n\n');
-
+    const dosageFacts = extractDosageFacts(selectedChunks);
     const answer = await askDeepSeekWithKnowledgeBase({
       question: input.question,
       medicineName: input.medicineName || document.medicine_name,
-      contextText
+      contextText,
+      dosageFacts,
+      patientContext: input.patientContext
     });
 
     response.json({
@@ -183,41 +195,144 @@ app.post('/api/chat', async (request, response, next) => {
   }
 });
 
-function selectKnowledgeChunks(allChunks, question, limit) {
-  const intent = classifyMedicineQuestion(question);
-  if (intent) {
-    const sectionChunks = allChunks.filter((chunk) => chunk.section_type === intent);
-    if (sectionChunks.length > 0) {
-      return fitChunksToContext(sectionChunks, 18000);
+function selectKnowledgeChunks(allChunks, question, patientContext, limit) {
+  const selected = [];
+  const prioritySections = [
+    'how_to_take',
+    'before_use',
+    'side_effects',
+    'storage',
+    'contents',
+    'what_is_it'
+  ];
+
+  for (const sectionType of prioritySections) {
+    for (const chunk of allChunks) {
+      if (chunk.section_type === sectionType && !selected.includes(chunk)) {
+        selected.push(chunk);
+      }
     }
   }
 
-  return fitChunksToContext(allChunks, 18000);
+  for (const chunk of allChunks) {
+    if ((chunk.section_type === null || chunk.section_type === undefined) && !selected.includes(chunk)) {
+      selected.push(chunk);
+    }
+  }
+
+  for (const chunk of allChunks) {
+    if (selected.includes(chunk)) {
+      continue;
+    }
+    selected.push(chunk);
+  }
+
+  return fitChunksToContext(selected, 18000);
 }
 
-function classifyMedicineQuestion(question) {
-  const lower = question.toLowerCase();
-  if (lower.includes('take') || lower.includes('dose') || lower.includes('dosage') || lower.includes('how should') ||
-    lower.includes('用法') || lower.includes('剂量') || lower.includes('怎么吃')) {
-    return 'how_to_take';
+function extractDosageFacts(chunks) {
+  const howToTakeText = chunks
+    .filter((chunk) => chunk.section_type === 'how_to_take')
+    .map((chunk) => chunk.chunk_text)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (howToTakeText.length === 0) {
+    return '';
   }
 
-  if (lower.includes('side effect') || lower.includes('adverse') || lower.includes('reaction') ||
-    lower.includes('副作用') || lower.includes('不良反应')) {
-    return 'side_effects';
+  const facts = [];
+  const recommendedDose = firstMatch(howToTakeText, [
+    /(\d+\s*(?:do|-|–)?\s*\d*\s*(?:kapsułki|kapsułek|tabletki|tabletek|tablet|capsules?|drops?|ml)(?:\s*\([^)]*\))?)/i,
+    /(?:recommended dose|dose)[^.:;]*[:.]?\s*([^.;]{0,120}(?:capsules?|tablets?|drops?|ml)[^.;]{0,120})/i
+  ]);
+  const frequency = firstMatch(howToTakeText, [
+    /(\d+\s*(?:do|-|–)?\s*\d+\s*razy\s+na\s+dobę)/i,
+    /(\d+\s*(?:to|-|–)?\s*\d+\s*times\s+(?:a|per)\s+day)/i,
+    /(every\s+\d+\s*(?:-|–|to)?\s*\d*\s*hours?)/i
+  ]);
+  const timing = firstMatch(howToTakeText, [
+    /(bezpośrednio przed,\s*w trakcie lub po posiłkach[^.]*\.?)/i,
+    /(before,\s*during,?\s*or after meals[^.]*\.?)/i,
+    /(with meals[^.]*\.?)/i,
+    /(after meals[^.]*\.?)/i,
+    /(before meals[^.]*\.?)/i
+  ]);
+  const duration = firstMatch(howToTakeText, [
+    /(należy przyjmować tak długo jak występują dolegliwości[^.]*\.?)/i,
+    /(take[^.]{0,80}as long as symptoms[^.]*\.?)/i
+  ]);
+
+  pushFact(facts, 'Dose per intake', recommendedDose);
+  pushFact(facts, 'Frequency', frequency);
+  pushFact(facts, 'Timing', timing);
+  pushFact(facts, 'Duration', duration);
+
+  const sourcePassage = extractDosageSourcePassage(howToTakeText);
+  if (sourcePassage.length > 0) {
+    facts.push(`Source dosage passage: ${sourcePassage}`);
   }
 
-  if (lower.includes('allerg') || lower.includes('contraindication') || lower.includes('warning') ||
-    lower.includes('avoid') || lower.includes('禁忌') || lower.includes('过敏') || lower.includes('注意')) {
-    return 'before_use';
+  return facts.join('\n');
+}
+
+function firstMatch(text, patterns) {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+  return '';
+}
+
+function pushFact(facts, label, value) {
+  if (value.length > 0) {
+    facts.push(`${label}: ${formatExtractedFactValue(value)}`);
+  } else {
+    facts.push(`${label}: Not found in the provided leaflet context`);
+  }
+}
+
+function formatExtractedFactValue(value) {
+  const translated = value
+    .replace(/kapsułki|kapsułek/gi, 'capsules')
+    .replace(/tabletki|tabletek/gi, 'tablets')
+    .replace(/co odpowiada/gi, 'equivalent to')
+    .replace(/symetykonu/gi, 'simethicone')
+    .replace(/razy na dobę/gi, 'times daily')
+    .replace(/(\d+)\s+do\s+(\d+)\s+times daily/gi, '$1 to $2 times daily')
+    .replace(/bezpośrednio przed,\s*w trakcie lub po posiłkach/gi, 'immediately before, during, or after meals')
+    .replace(/w razie konieczności,\s*również przed snem/gi, 'if needed, also before bedtime')
+    .replace(/należy przyjmować tak długo jak występują dolegliwości/gi, 'take as long as symptoms persist');
+
+  return translated === value ? value : `${value} [English: ${translated}]`;
+}
+
+function extractDosageSourcePassage(text) {
+  const startSignals = ['Dawkowanie', 'Recommended dose', 'Zalecana dawka'];
+  const endSignals = ['Sposób podawania', 'Method of administration', 'Zastosowanie większej', 'Pominięcie'];
+  let start = -1;
+  for (const signal of startSignals) {
+    const index = text.toLowerCase().indexOf(signal.toLowerCase());
+    if (index >= 0 && (start < 0 || index < start)) {
+      start = index;
+    }
+  }
+  if (start < 0) {
+    start = 0;
   }
 
-  if (lower.includes('store') || lower.includes('storage') || lower.includes('expire') ||
-    lower.includes('保存') || lower.includes('储存') || lower.includes('过期')) {
-    return 'storage';
+  let end = -1;
+  for (const signal of endSignals) {
+    const index = text.toLowerCase().indexOf(signal.toLowerCase(), start + 20);
+    if (index > start && (end < 0 || index < end)) {
+      end = index;
+    }
   }
-
-  return null;
+  const passage = text.slice(start, end > start ? end : Math.min(text.length, start + 900)).trim();
+  return passage.length > 900 ? passage.slice(0, 900) : passage;
 }
 
 function fitChunksToContext(chunks, maxCharacters) {
@@ -329,3 +444,6 @@ process.on('SIGINT', () => {
 process.on('SIGTERM', () => {
   void shutdown();
 });
+
+
+

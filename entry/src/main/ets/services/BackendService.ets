@@ -17,16 +17,37 @@ class RplDocumentExtractRequest {
   }
 }
 
+export class PatientContext {
+  sex: string = '';
+  age: string = '';
+  weightKg: string = '';
+  currentSymptoms: string = '';
+  allergyHistory: string = '';
+  specialStatus: string = '';
+
+  constructor(sex: string, age: string, weightKg: string, currentSymptoms: string, allergyHistory: string,
+    specialStatus: string) {
+    this.sex = sex;
+    this.age = age;
+    this.weightKg = weightKg;
+    this.currentSymptoms = currentSymptoms;
+    this.allergyHistory = allergyHistory;
+    this.specialStatus = specialStatus;
+  }
+}
+
 class MedicineChatRequest {
   question: string = '';
   documentId: number = 0;
   medicineName: string = '';
+  patientContext: PatientContext = new PatientContext('', '', '', '', '', '');
   limit: number = 6;
 
-  constructor(question: string, documentId: number, medicineName: string) {
+  constructor(question: string, documentId: number, medicineName: string, patientContext: PatientContext) {
     this.question = question;
     this.documentId = documentId;
     this.medicineName = medicineName;
+    this.patientContext = patientContext;
   }
 }
 
@@ -142,8 +163,9 @@ export class BackendService {
     }
   }
 
-  async askMedicineQuestion(question: string, documentId: number, medicineName: string): Promise<BackendChatResponse> {
-    const requestBody = new MedicineChatRequest(question, documentId, medicineName);
+  async askMedicineQuestion(question: string, documentId: number, medicineName: string,
+    patientContext: PatientContext): Promise<BackendChatResponse> {
+    const requestBody = new MedicineChatRequest(question, documentId, medicineName, patientContext);
     const request = http.createHttp();
     try {
       console.info('[MediClearChat] chat request start documentId=' + documentId.toString());
