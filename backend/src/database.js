@@ -154,6 +154,14 @@ export async function getLatestDocumentByProductId(productId) {
     .next());
 }
 
+export async function getLatestDocumentByProductIdAndType(productId, documentType) {
+  return toApiDocument(await documents()
+    .find({ productId, documentType })
+    .sort({ updatedAt: -1 })
+    .limit(1)
+    .next());
+}
+
 export async function getChunks(documentId) {
   const results = await chunks()
     .find({ documentId })

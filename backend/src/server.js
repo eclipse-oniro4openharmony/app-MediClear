@@ -5,6 +5,7 @@ import {
   closeDatabase,
   getChunks,
   getDocument,
+  getLatestDocumentByProductIdAndType,
   getLatestDocumentByProductId,
   initializeDatabase,
   searchChunks,
@@ -40,6 +41,8 @@ const extractUrlSchema = z.object({
 const rplSchema = z.object({
   productId: z.union([z.string(), z.number()]).transform((value) => String(value)),
   medicineName: z.string().optional(),
+  leafletUrl: z.union([z.string().url(), z.literal('')]).optional().default(''),
+  characteristicUrl: z.union([z.string().url(), z.literal('')]).optional().default(''),
   documentType: z.enum(['leaflet', 'characteristic']).default('leaflet'),
   forceOcr: z.boolean().optional().default(false)
 });
@@ -65,6 +68,12 @@ const chatSchema = z.object({
   medicineName: z.string().optional().default(''),
   patientContext: patientContextSchema,
   limit: z.number().int().positive().max(12).default(6)
+});
+
+const reminderPlanSchema = z.object({
+  documentId: z.number().int().positive(),
+  medicineName: z.string().optional().default(''),
+  patientContext: patientContextSchema
 });
 
 app.get('/health', (_request, response) => {
@@ -190,6 +199,26 @@ app.post('/api/chat', async (request, response, next) => {
         sectionTitle: chunk.section_title
       }))
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/reminders/plan', async (request, response, next) => {
+  try {
+    const input = reminderPlanSchema.parse(request.body);
+    const document = await getDocument(input.documentId);
+    if (!document) {
+      response.status(404).json({ error: 'Knowledge base document not found' });
+      return;
+    }
+
+    const allChunks = await getChunks(input.documentId);
+    response.json(buildReminderPlan({
+      medicineName: input.medicineName || document.medicine_name,
+      chunks: allChunks,
+      patientContext: input.patientContext
+    }));
   } catch (error) {
     next(error);
   }
@@ -335,6 +364,472 @@ function extractDosageSourcePassage(text) {
   return passage.length > 900 ? passage.slice(0, 900) : passage;
 }
 
+function buildReminderPlan(input) {
+  const safetyAssessment = buildReminderSafetyAssessment(input.chunks, input.patientContext ?? {});
+  const howToTakeText = input.chunks
+    .filter((chunk) => chunk.section_type === 'how_to_take')
+    .map((chunk) => chunk.chunk_text)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (safetyAssessment.blocked) {
+    return {
+      status: 'blocked',
+      medicineName: input.medicineName || '',
+      summary: safetyAssessment.summary,
+      howToTake: 'Automatic reminders were not created because the leaflet safety check needs attention.',
+      dose: 'Not set',
+      frequency: 'Not set',
+      timing: 'Not set',
+      warning: safetyAssessment.warning,
+      reminders: []
+    };
+  }
+
+  if (howToTakeText.length === 0) {
+    return {
+      status: 'needs_confirmation',
+      medicineName: input.medicineName || '',
+      summary: 'The official leaflet context does not include a clear how-to-take section.',
+      howToTake: 'Confirm the dose and timing with a doctor or pharmacist before setting reminders.',
+      dose: 'Not found in the provided leaflet context',
+      frequency: 'Not found in the provided leaflet context',
+      timing: 'Not found in the provided leaflet context',
+      warning: combineReminderMessages([
+        safetyAssessment.warning,
+        'No automatic reminders were created because the leaflet usage plan was not clear.'
+      ]),
+      reminders: []
+    };
+  }
+
+  const dose = firstMatch(howToTakeText, [
+    /((?:jedna|jeden|1)\s+tabletka\s+\d+\s*mg)/i,
+    /((?:dwie|dwa|2)\s+tabletki\s+\d*\s*mg?)/i,
+    /(\d+\s*(?:do|-|–)?\s*\d*\s*(?:kapsułki|kapsułek|tabletki|tabletek|tablet|capsules?|drops?|ml)(?:\s*\([^)]*\))?)/i,
+    /(?:recommended dose|dose)[^.:;]*[:.]?\s*([^.;]{0,120}(?:capsules?|tablets?|drops?|ml)[^.;]{0,120})/i
+  ]);
+  const frequency = firstMatch(howToTakeText, [
+    /(raz\s+na\s+dobę)/i,
+    /(once\s+(?:daily|a day|per day))/i,
+    /(\d+\s*(?:do|-|–)?\s*\d+\s*razy\s+na\s+dobę)/i,
+    /(\d+\s*(?:to|-|–)?\s*\d+\s*times\s+(?:a|per)\s+day)/i,
+    /(every\s+\d+\s*(?:-|–|to)?\s*\d*\s*hours?)/i
+  ]);
+  const timing = firstMatch(howToTakeText, [
+    /(rano)/i,
+    /(bezpośrednio przed,\s*w trakcie lub po posiłkach[^.]*\.?)/i,
+    /(before,\s*during,?\s*or after meals[^.]*\.?)/i,
+    /(with meals[^.]*\.?)/i,
+    /(after meals[^.]*\.?)/i,
+    /(before meals[^.]*\.?)/i
+  ]);
+  const duration = firstMatch(howToTakeText, [
+    /(należy przyjmować tak długo jak występują dolegliwości[^.]*\.?)/i,
+    /(take[^.]{0,80}as long as symptoms[^.]*\.?)/i
+  ]);
+  const reminderCount = chooseReminderCount(frequency);
+  const displayDose = conciseFact(dose);
+  const displayFrequency = conciseFact(frequency);
+  const displayTiming = conciseFact(timing);
+  const displayDuration = conciseFact(duration);
+
+  if (displayDose.indexOf('Not found') >= 0 || displayFrequency.indexOf('Not found') >= 0) {
+    return {
+      status: 'needs_confirmation',
+      medicineName: input.medicineName || '',
+      summary: 'The leaflet usage section did not provide enough structured dose and frequency information for automatic reminders.',
+      howToTake: buildHowToTakeText(displayDose, displayFrequency, displayTiming, displayDuration),
+      dose: displayDose,
+      frequency: displayFrequency,
+      timing: displayTiming,
+      warning: combineReminderMessages([
+        safetyAssessment.warning,
+        'No automatic reminders were created. Confirm the dose and timing with a doctor or pharmacist.'
+      ]),
+      reminders: []
+    };
+  }
+
+  const reminders = buildReminderItems(reminderCount, displayDose, displayTiming);
+  const status = reminders.length > 0 && displayDose.indexOf('Not found') < 0 && !safetyAssessment.needsConfirmation
+    ? 'ready'
+    : 'needs_confirmation';
+  const warning = buildReminderWarning(safetyAssessment.warning, reminders.length, displayFrequency);
+
+  return {
+    status,
+    medicineName: input.medicineName || '',
+    summary: status === 'ready'
+      ? `Suggested ${reminders.length} daily reminder${reminders.length === 1 ? '' : 's'} from the official leaflet usage section.`
+      : 'The leaflet has partial usage information. Confirm the plan before relying on reminders.',
+    howToTake: buildHowToTakeText(displayDose, displayFrequency, displayTiming, displayDuration),
+    dose: displayDose,
+    frequency: displayFrequency,
+    timing: displayTiming,
+    warning,
+    reminders
+  };
+}
+
+function buildReminderSafetyAssessment(chunks, patientContext) {
+  const safetyText = buildSafetyText(chunks);
+  const findings = [];
+  const cautions = [];
+
+  const ageFinding = findAgeSafetyFinding(safetyText, patientContext.age ?? '');
+  if (ageFinding.blocked) {
+    findings.push(ageFinding.message);
+  } else if (ageFinding.message.length > 0) {
+    cautions.push(ageFinding.message);
+  }
+
+  const allergyFinding = findAllergySafetyFinding(safetyText, patientContext.allergyHistory ?? '');
+  if (allergyFinding.blocked) {
+    findings.push(allergyFinding.message);
+  } else if (allergyFinding.message.length > 0) {
+    cautions.push(allergyFinding.message);
+  }
+
+  const specialStatusFinding = findSpecialStatusSafetyFinding(safetyText, patientContext.specialStatus ?? '');
+  if (specialStatusFinding.blocked) {
+    findings.push(specialStatusFinding.message);
+  } else if (specialStatusFinding.message.length > 0) {
+    cautions.push(specialStatusFinding.message);
+  }
+
+  if (findings.length > 0) {
+    const warning = combineReminderMessages(findings.concat([
+      'Automatic reminders were not created. Check the leaflet and ask a doctor or pharmacist before use.'
+    ]));
+    return {
+      blocked: true,
+      needsConfirmation: true,
+      summary: findings[0],
+      warning
+    };
+  }
+
+  const warning = cautions.length > 0
+    ? combineReminderMessages(cautions.concat(['Confirm the plan before use. MediClear does not prescribe medicine.']))
+    : '';
+  return {
+    blocked: false,
+    needsConfirmation: cautions.length > 0,
+    summary: cautions.length > 0 ? cautions[0] : 'No obvious safety block found in the leaflet excerpts used for reminders.',
+    warning
+  };
+}
+
+function buildSafetyText(chunks) {
+  const priority = ['before_use', 'how_to_take', null, undefined];
+  const selected = [];
+  for (const sectionType of priority) {
+    for (const chunk of chunks) {
+      if (chunk.section_type === sectionType && !selected.includes(chunk)) {
+        selected.push(chunk);
+      }
+    }
+  }
+  if (selected.length === 0) {
+    selected.push(...chunks.slice(0, 8));
+  }
+  return selected
+    .map((chunk) => chunk.chunk_text)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findAgeSafetyFinding(text, ageValue) {
+  const age = Number.parseInt(String(ageValue).trim(), 10);
+  if (!Number.isFinite(age)) {
+    return {
+      blocked: false,
+      message: 'Age is missing, so reminders need manual confirmation.'
+    };
+  }
+
+  const lower = text.toLowerCase();
+  const underAgePatterns = [
+    /(?:not recommended|do not use|must not be used|should not be used)[^.]{0,140}(?:children|adolescents|patients)[^.]{0,80}(?:under|below)\s+(\d+)/i,
+    /(?:children|adolescents|patients)[^.]{0,100}(?:under|below)\s+(\d+)[^.]{0,140}(?:not recommended|do not use|must not be used|should not be used)/i,
+    /(?:nie zaleca się|nie stosować|nie należy stosować)[^.]{0,140}(?:dzieci|młodzieży|pacjentów)[^.]{0,80}(?:poniżej|do)\s+(\d+)/i,
+    /(?:dzieci|młodzieży|pacjentów)[^.]{0,100}(?:poniżej|do)\s+(\d+)[^.]{0,140}(?:nie zaleca się|nie stosować|nie należy stosować)/i
+  ];
+
+  for (const pattern of underAgePatterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      const minimumAge = Number.parseInt(match[1], 10);
+      if (age < minimumAge) {
+        return {
+          blocked: true,
+          message: `The leaflet indicates this medicine is not recommended for patients under ${minimumAge}. User age: ${age}.`
+        };
+      }
+      return {
+        blocked: false,
+        message: ''
+      };
+    }
+  }
+
+  if (age < 18 && (lower.includes('children and adolescents') || lower.includes('dzieci i młodzieży'))) {
+    return {
+      blocked: false,
+      message: 'The leaflet contains a children/adolescents warning. Confirm use before setting reminders.'
+    };
+  }
+
+  const youngAdultWarning = text.match(/(?:poniżej|under|below)\s+25\s+lat|under\s+25/i);
+  if (youngAdultWarning && age < 25) {
+    return {
+      blocked: false,
+      message: 'The leaflet contains an increased-risk warning for adults under 25. Confirm with a doctor or pharmacist before reminders.'
+    };
+  }
+
+  return {
+    blocked: false,
+    message: ''
+  };
+}
+
+function findAllergySafetyFinding(text, allergyHistory) {
+  const allergies = normalizePatientList(allergyHistory);
+  if (allergies.length === 0) {
+    return {
+      blocked: false,
+      message: ''
+    };
+  }
+
+  const normalizedText = normalizeSafetyText(text);
+  const matchedAllergies = [];
+  for (const allergy of allergies) {
+    if (allergy.length < 3) {
+      continue;
+    }
+    if (normalizedText.includes(allergy)) {
+      matchedAllergies.push(allergy);
+    }
+  }
+
+  if (matchedAllergies.length > 0) {
+    return {
+      blocked: true,
+      message: `Saved allergy history matches leaflet safety text: ${matchedAllergies.join(', ')}.`
+    };
+  }
+
+  return {
+    blocked: false,
+    message: ''
+  };
+}
+
+function findSpecialStatusSafetyFinding(text, specialStatus) {
+  const statuses = normalizePatientList(specialStatus);
+  if (statuses.length === 0) {
+    return {
+      blocked: false,
+      message: ''
+    };
+  }
+
+  const normalizedText = normalizeSafetyText(text);
+  const statusMap = [
+    { tokens: ['pregnant', 'pregnancy', 'ciaza', 'ciazy'], label: 'pregnancy' },
+    { tokens: ['breastfeeding', 'breast feeding', 'karmienie', 'karmi'], label: 'breastfeeding' },
+    { tokens: ['liver', 'hepatic', 'watroba', 'watroby'], label: 'liver condition' },
+    { tokens: ['kidney', 'renal', 'nerki', 'nerek'], label: 'kidney condition' },
+    { tokens: ['epilepsy', 'seizure', 'padaczka', 'drgawki'], label: 'seizure/epilepsy history' }
+  ];
+
+  const matched = [];
+  for (const status of statuses) {
+    for (const entry of statusMap) {
+      const patientMentionsStatus = entry.tokens.some((token) => status.includes(normalizeSafetyText(token)));
+      const leafletMentionsStatus = entry.tokens.some((token) => normalizedText.includes(normalizeSafetyText(token)));
+      if (patientMentionsStatus && leafletMentionsStatus && !matched.includes(entry.label)) {
+        matched.push(entry.label);
+      }
+    }
+  }
+
+  return {
+    blocked: false,
+    message: matched.length > 0
+      ? `Saved special status matches leaflet warning topics: ${matched.join(', ')}. Confirm with a doctor or pharmacist before reminders.`
+      : ''
+  };
+}
+
+function conciseFact(value) {
+  if (!value || value.trim().length === 0) {
+    return 'Not found in the provided leaflet context';
+  }
+
+  const formatted = formatExtractedFactValue(value);
+  const englishStart = formatted.indexOf('[English: ');
+  if (englishStart >= 0) {
+    return formatted.substring(englishStart + 10, formatted.length - 1).trim();
+  }
+  return translateLeafletFactToEnglish(formatted.trim());
+}
+
+function translateLeafletFactToEnglish(value) {
+  return value
+    .replace(/\bjedna\s+tabletka\s+(\d+\s*mg)\b/gi, '1 tablet $1')
+    .replace(/\bjeden\s+tabletka\s+(\d+\s*mg)\b/gi, '1 tablet $1')
+    .replace(/\b1\s+tabletka\s+(\d+\s*mg)\b/gi, '1 tablet $1')
+    .replace(/\bdwie\s+tabletki\s+(\d+\s*mg)?\b/gi, (_match, strength) => `2 tablets${strength ? ` ${strength.trim()}` : ''}`)
+    .replace(/\b2\s+tabletki\s+(\d+\s*mg)?\b/gi, (_match, strength) => `2 tablets${strength ? ` ${strength.trim()}` : ''}`)
+    .replace(/\braz\s+na\s+dobę\b/gi, 'once daily')
+    .replace(/\brano\b/gi, 'morning')
+    .replace(/\bna\s+dobę\b/gi, 'daily')
+    .replace(/\bdobę\b/gi, 'day')
+    .replace(/\btabletka\b/gi, 'tablet')
+    .replace(/\btabletki\b/gi, 'tablets')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function chooseReminderCount(frequency) {
+  const lower = frequency.toLowerCase();
+  if (lower.includes('raz na dobę') || lower.includes('once daily') || lower.includes('once a day') ||
+    lower.includes('once per day')) {
+    return 1;
+  }
+
+  const rangeMatch = lower.match(/(\d+)\s*(?:do|-|–|to)\s*(\d+)/);
+  if (rangeMatch?.[1]) {
+    const minimum = Number.parseInt(rangeMatch[1], 10);
+    return Math.max(1, Math.min(minimum, 4));
+  }
+
+  const singleMatch = lower.match(/(\d+)\s*(?:razy|times)/);
+  if (singleMatch?.[1]) {
+    return Math.max(1, Math.min(Number.parseInt(singleMatch[1], 10), 4));
+  }
+
+  const hourMatch = lower.match(/every\s+(\d+)/);
+  if (hourMatch?.[1]) {
+    const hours = Number.parseInt(hourMatch[1], 10);
+    if (hours > 0) {
+      return Math.max(1, Math.min(Math.floor(16 / hours) + 1, 4));
+    }
+  }
+
+  return 2;
+}
+
+function buildReminderItems(count, dose, timing) {
+  const templates = [
+    ['08:30', timingLabel('Morning dose', timing)],
+    ['14:00', timingLabel('Midday dose', timing)],
+    ['19:30', timingLabel('Evening dose', timing)],
+    ['22:30', timingLabel('Optional bedtime dose', timing)]
+  ];
+  const reminders = [];
+  for (let index = 0; index < count && index < templates.length; index += 1) {
+    reminders.push({
+      time: templates[index][0],
+      label: templates[index][1],
+      dose,
+      source: 'Official leaflet how-to-take section'
+    });
+  }
+  return reminders;
+}
+
+function timingLabel(defaultLabel, timing) {
+  const lower = timing.toLowerCase();
+  if (lower.includes('rano') || lower.includes('morning')) {
+    return 'Morning dose';
+  }
+  if (lower.includes('before') && lower.includes('during') && lower.includes('after')) {
+    return `${defaultLabel} - before, during, or after meals`;
+  }
+  if (lower.includes('after')) {
+    return `${defaultLabel} - after meals`;
+  }
+  if (lower.includes('before')) {
+    return `${defaultLabel} - before meals`;
+  }
+  if (lower.includes('with')) {
+    return `${defaultLabel} - with meals`;
+  }
+  return defaultLabel;
+}
+
+function buildHowToTakeText(dose, frequency, timing, duration) {
+  return [
+    `Dose: ${dose}`,
+    `Frequency: ${frequency}`,
+    `Timing: ${timing}`,
+    `Duration: ${duration}`
+  ].join('\n');
+}
+
+function buildReminderWarning(ageMessage, reminderCount, frequency) {
+  const parts = [];
+  if (ageMessage.length > 0) {
+    parts.push(ageMessage);
+  }
+  if (frequency.toLowerCase().match(/\d+\s*(?:to|-|–)\s*\d+/) || frequency.toLowerCase().match(/\d+\s*do\s*\d+/)) {
+    parts.push('The leaflet gives a frequency range, so MediClear schedules the lower end by default. Add an extra dose only if the leaflet and your pharmacist/doctor allow it.');
+  }
+  if (reminderCount === 0) {
+    parts.push('No automatic reminders were created.');
+  }
+  if (!parts.join(' ').includes('MediClear does not prescribe medicine')) {
+    parts.push('Confirm the plan before use. MediClear does not prescribe medicine.');
+  }
+  return combineReminderMessages(parts);
+}
+
+function normalizePatientList(value) {
+  const normalized = normalizeSafetyText(value);
+  if (normalized.length === 0 || ['none', 'no', 'no known allergies', 'brak'].includes(normalized)) {
+    return [];
+  }
+  return normalized
+    .split(/[,;/]+|\s+and\s+|\s+or\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && !['none', 'no', 'brak'].includes(item));
+}
+
+function normalizeSafetyText(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/ą/g, 'a')
+    .replace(/ć/g, 'c')
+    .replace(/ę/g, 'e')
+    .replace(/ł/g, 'l')
+    .replace(/ń/g, 'n')
+    .replace(/ó/g, 'o')
+    .replace(/ś/g, 's')
+    .replace(/ź/g, 'z')
+    .replace(/ż/g, 'z')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function combineReminderMessages(messages) {
+  const kept = [];
+  for (const message of messages) {
+    const clean = String(message ?? '').replace(/\s+/g, ' ').trim();
+    if (clean.length > 0 && !kept.includes(clean)) {
+      kept.push(clean);
+    }
+  }
+  return kept.join(' ');
+}
+
 function fitChunksToContext(chunks, maxCharacters) {
   const selected = [];
   let total = 0;
@@ -380,13 +875,21 @@ async function extractAndStore(input) {
 }
 
 async function extractRplDocumentWithFallback(input) {
+  if (!input.forceOcr) {
+    const cached = await getLatestDocumentByProductIdAndType(input.productId, input.documentType);
+    if (cached?.status === 'ready') {
+      console.log(`[extract] using cached ${input.documentType} documentId=${cached.id} productId=${input.productId}`);
+      return cached;
+    }
+  }
+
   const preferredTypes = input.documentType === 'characteristic'
     ? ['characteristic', 'leaflet']
     : ['leaflet', 'characteristic'];
   const errors = [];
 
   for (const documentType of preferredTypes) {
-    const url = `https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/${input.productId}/${documentType}`;
+    const url = documentUrlForType(input, documentType);
     try {
       return await extractAndStore({
         url,
@@ -408,6 +911,16 @@ async function extractRplDocumentWithFallback(input) {
   const notFound = new Error(`No RPL PDF document is available for productId=${input.productId}. ${errors.join(' | ')}`);
   notFound.statusCode = 404;
   throw notFound;
+}
+
+function documentUrlForType(input, documentType) {
+  if (documentType === 'leaflet' && input.leafletUrl?.length > 0) {
+    return input.leafletUrl;
+  }
+  if (documentType === 'characteristic' && input.characteristicUrl?.length > 0) {
+    return input.characteristicUrl;
+  }
+  return `https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/${input.productId}/${documentType}`;
 }
 
 app.use((error, _request, response, _next) => {
