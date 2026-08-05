@@ -2,6 +2,7 @@ import http from '@ohos.net.http';
 import {
   buildLatestDocumentByProductUrl,
   buildMedicineChatUrl,
+  buildReminderPlanUrl,
   buildRplDocumentExtractUrl,
   MEDICLEAR_BACKEND_HEALTH_URL
 } from './BackendConfig';
@@ -9,11 +10,15 @@ import {
 class RplDocumentExtractRequest {
   productId: string = '';
   medicineName: string = '';
+  leafletUrl: string = '';
+  characteristicUrl: string = '';
   documentType: string = 'leaflet';
 
-  constructor(productId: string, medicineName: string) {
+  constructor(productId: string, medicineName: string, leafletUrl: string = '', characteristicUrl: string = '') {
     this.productId = productId;
     this.medicineName = medicineName;
+    this.leafletUrl = leafletUrl;
+    this.characteristicUrl = characteristicUrl;
   }
 }
 
@@ -45,6 +50,18 @@ class MedicineChatRequest {
 
   constructor(question: string, documentId: number, medicineName: string, patientContext: PatientContext) {
     this.question = question;
+    this.documentId = documentId;
+    this.medicineName = medicineName;
+    this.patientContext = patientContext;
+  }
+}
+
+class ReminderPlanRequest {
+  documentId: number = 0;
+  medicineName: string = '';
+  patientContext: PatientContext = new PatientContext('', '', '', '', '', '');
+
+  constructor(documentId: number, medicineName: string, patientContext: PatientContext) {
     this.documentId = documentId;
     this.medicineName = medicineName;
     this.patientContext = patientContext;
@@ -86,6 +103,25 @@ export class BackendChatResponse {
   citations: BackendChatCitation[] = [];
 }
 
+export class BackendReminderPlanItem {
+  time: string = '';
+  label: string = '';
+  dose: string = '';
+  source: string = '';
+}
+
+export class BackendReminderPlanResponse {
+  status: string = '';
+  medicineName: string = '';
+  summary: string = '';
+  howToTake: string = '';
+  dose: string = '';
+  frequency: string = '';
+  timing: string = '';
+  warning: string = '';
+  reminders: BackendReminderPlanItem[] = [];
+}
+
 export class BackendService {
   async checkHealth(): Promise<BackendHealthResponse> {
     const request = http.createHttp();
@@ -112,8 +148,9 @@ export class BackendService {
     }
   }
 
-  async extractRplLeaflet(productId: string, medicineName: string): Promise<BackendDocumentResponse> {
-    const requestBody = new RplDocumentExtractRequest(productId, medicineName);
+  async extractRplLeaflet(productId: string, medicineName: string, leafletUrl: string = '',
+    characteristicUrl: string = ''): Promise<BackendDocumentResponse> {
+    const requestBody = new RplDocumentExtractRequest(productId, medicineName, leafletUrl, characteristicUrl);
     const request = http.createHttp();
     try {
       console.info('[MediClearBackend] extract request start productId=' + productId + ' url=' + buildRplDocumentExtractUrl());
@@ -187,6 +224,36 @@ export class BackendService {
       }
 
       return JSON.parse(response.result.toString()) as BackendChatResponse;
+    } finally {
+      request.destroy();
+    }
+  }
+
+  async planMedicationReminders(documentId: number, medicineName: string,
+    patientContext: PatientContext): Promise<BackendReminderPlanResponse> {
+    const requestBody = new ReminderPlanRequest(documentId, medicineName, patientContext);
+    const request = http.createHttp();
+    try {
+      console.info('[MediClearReminder] reminder plan request start documentId=' + documentId.toString());
+      const response = await request.request(buildReminderPlanUrl(), {
+        method: http.RequestMethod.POST,
+        header: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        extraData: JSON.stringify(requestBody),
+        expectDataType: http.HttpDataType.STRING,
+        readTimeout: 30000,
+        connectTimeout: 10000
+      });
+
+      console.info('[MediClearReminder] reminder plan responseCode=' + response.responseCode.toString());
+      if (response.responseCode !== 200) {
+        throw new Error('Backend reminder planning failed: ' + response.responseCode.toString() + ' ' +
+        response.result.toString());
+      }
+
+      return JSON.parse(response.result.toString()) as BackendReminderPlanResponse;
     } finally {
       request.destroy();
     }
