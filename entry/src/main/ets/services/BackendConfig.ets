@@ -20,6 +20,10 @@ export function buildMedicineChatUrl(): string {
   return `${MEDICLEAR_BACKEND_BASE_URL}/api/chat`;
 }
 
+export function buildReminderPlanUrl(): string {
+  return `${MEDICLEAR_BACKEND_BASE_URL}/api/reminders/plan`;
+}
+
 export function buildLatestDocumentByProductUrl(productId: string): string {
   return `${MEDICLEAR_BACKEND_BASE_URL}/api/documents/by-product/${productId}`;
 }

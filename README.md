@@ -27,7 +27,7 @@ Instead of answering "What medicine should I take?", MediClear answers:
 
 Users can scan or upload:
 
-- Medicine package photos
+- Medicine leaflet and instruction-guide photos
 - Medicine labels
 - PDF leaflets
 - OTC medicine instruction sheets
@@ -114,13 +114,13 @@ This is more useful than word-by-word translation because it focuses on the info
 ## App Flow
 
 1. User opens MediClear.
-2. User uploads a medicine leaflet, package photo, label, or PDF.
+2. User uploads a medicine leaflet, instruction-guide photo, dosage-label photo, or PDF.
 3. OCR or PDF extraction reads the text.
 4. The parser extracts medicine name, dosage, frequency, contraindications, side effects, expiration date, and storage requirements.
 5. MediClear generates a "How to take" checklist.
 6. MediClear generates safety warnings and contraindication notes.
 7. User confirms the usage plan.
-8. The app creates local medication reminders.
+8. The app generates an in-app reminder schedule from the official leaflet dosage section and the user's saved basics.
 9. User marks doses as taken, skipped, or edits the schedule.
 
 ## Main Screens
@@ -186,11 +186,11 @@ Possible implementation route:
 
 Possible components:
 
-- OCR: HarmonyOS Core Vision text recognition for medicine package photos
+- OCR: HarmonyOS Core Vision text recognition for medicine leaflet and instruction-guide photos
 - PDF parsing: PDF.js, Poppler, or platform PDF extraction
 - Text extraction: rule-based parser plus optional LLM support
 - Local database: SQLite
-- Reminders: local notifications
+- Reminders: backend-generated in-app reminder schedule; system notification publishing is the next integration step
 - UI: ArkTS and ArkUI
 - Optional AI model: local model or self-hosted LLM
 
@@ -251,9 +251,19 @@ For a physical phone, the phone and computer must be on the same Wi-Fi, and Wind
 
 ### Text Extraction
 
-Medicine package photos and gallery images are recognized on-device with HarmonyOS Core Vision text recognition.
+Medicine leaflet photos and gallery images are recognized on-device with HarmonyOS Core Vision text recognition.
 
 Official leaflet PDFs are not stored in the mobile app. After the app matches a medicine to an RPL product ID, the Docker backend downloads the official PDF, extracts text with `pdfjs-dist`, stores the resulting text chunks in MongoDB, and discards the PDF buffer.
+
+### Reminder Planning
+
+When the Home screen `Upload Medicine Guide` flow finishes, the app sends the matched backend document ID and the user's saved basics to:
+
+```text
+POST /api/reminders/plan
+```
+
+The backend reads the official leaflet `how_to_take` chunks, extracts dose, frequency, timing, duration, and basic age warnings, then returns a reminder plan. The mobile app applies that plan to the `Medication Reminder` page automatically. This flow is separate from the Chat page photo flow, which is used to load a medicine knowledge base for questions.
 
 ## Safety Boundary
 

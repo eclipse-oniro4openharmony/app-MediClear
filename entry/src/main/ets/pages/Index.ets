@@ -1,10 +1,19 @@
 import { common } from '@kit.AbilityKit';
+import promptAction from '@ohos.promptAction';
 import { MediClearDatabase } from '../database/MediClearDatabase';
 import { RplMedicineDAO } from '../database/RplMedicineDAO';
 import { RplMedicineRecord } from '../database/RplMedicineRecord';
 import { CoreVisionOcrService } from '../services/CoreVisionOcrService';
 import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
-import { BackendService, BackendChatResponse, BackendDocumentResponse, BackendHealthResponse, PatientContext } from '../services/BackendService';
+import {
+  BackendService,
+  BackendChatResponse,
+  BackendDocumentResponse,
+  BackendHealthResponse,
+  BackendReminderPlanItem,
+  BackendReminderPlanResponse,
+  PatientContext
+} from '../services/BackendService';
 import { MEDICLEAR_BACKEND_BASE_URL } from '../services/BackendConfig';
 import { Markdown, MarkdownController } from '@luvi/lv-markdown-in';
 
@@ -47,14 +56,17 @@ class ReminderItem {
   icon: Resource;
   tint: string;
   background: string;
+  source: string;
 
-  constructor(time: string, label: string, dose: string, icon: Resource, tint: string, background: string) {
+  constructor(time: string, label: string, dose: string, icon: Resource, tint: string, background: string,
+    source: string = 'Suggested reminder') {
     this.time = time;
     this.label = label;
     this.dose = dose;
     this.icon = icon;
     this.tint = tint;
     this.background = background;
+    this.source = source;
   }
 }
 
@@ -100,8 +112,11 @@ struct Index {
   @State selectedGuide: number = 0;
   @State showUploadSheet: boolean = false;
   @State showBasicsForm: boolean = false;
+  @State showReminderConfirmDialog: boolean = false;
+  @State autoGenerateReminders: boolean = true;
   @State uploadState: string = 'No medicine guide scanned yet';
   @State uploadSource: string = 'Tap Upload Medicine Guide to scan a medicine leaflet.';
+  @State activeUploadPurpose: string = 'guide';
   @State selectedGuideUri: string = '';
   @State extractedOcrText: string = '';
   @State medicineName: string = 'Ibuprofen 200 mg';
@@ -117,8 +132,13 @@ struct Index {
   @State sideEffectThree: string = 'Stomach discomfort';
   @State reminderOneTime: string = '08:30';
   @State reminderOneLabel: string = 'After breakfast';
+  @State reminderOneDose: string = '1 tablet';
   @State reminderTwoTime: string = '19:30';
   @State reminderTwoLabel: string = 'After dinner';
+  @State reminderTwoDose: string = '1 tablet';
+  @State reminderPlanStatus: string = 'Upload a medicine guide to generate reminders.';
+  @State reminderPlanWarning: string = '';
+  @State reminderAlarmStatus: string = 'No reminder plan set yet.';
   @State sourceNote: string = 'Source: demo medicine guide';
   @State leafletUrl: string = '';
   @State characteristicUrl: string = '';
@@ -139,6 +159,10 @@ struct Index {
   @State basicAllergyHistory: string = '';
   @State basicSpecialStatus: string = '';
   @State basicCustomAllergy: string = '';
+  @State reminderPlanItems: ReminderItem[] = [];
+  @State pendingReminderPlanItems: ReminderItem[] = [];
+  @State pendingReminderPlanSummary: string = '';
+  @State pendingReminderPlanWarning: string = '';
 
   private sexOptions: SelectOption[] = [
     { value: 'Male' },
@@ -173,7 +197,7 @@ struct Index {
   ];
 
   private actions: ActionItem[] = [
-    new ActionItem('Upload Medicine Guide', 'Take photo or upload file', $r('app.media.bi_cloud_upload'), '#009F9A'),
+    new ActionItem('Upload Medicine Guide', 'Scan leaflet or upload PDF', $r('app.media.bi_cloud_upload'), '#009F9A'),
     new ActionItem('My Reminders', 'View and manage schedule', $r('app.media.bi_bell'), '#1767C5'),
     new ActionItem('Medicine History', 'Past medicines and guides', $r('app.media.bi_clock_history'), '#6554D9')
   ];
@@ -248,6 +272,10 @@ struct Index {
 
       if (this.showUploadSheet) {
         this.UploadChoiceSheet()
+      }
+
+      if (this.showReminderConfirmDialog) {
+        this.ReminderConfirmDialog()
       }
     }
     .width('100%')
@@ -804,15 +832,15 @@ struct Index {
         }
         .width('100%')
 
-        Text('Choose a photo source. MediClear will match the detected medicine against the local RPL database and show the official PDF endpoints.')
+        Text('Choose a leaflet or instruction-guide source. MediClear will read the guide, match the medicine, and generate a reminder plan from the official leaflet.')
           .fontSize(13)
           .fontColor('#536175')
           .lineHeight(19)
           .width('100%')
 
         Row({ space: 12 }) {
-          this.UploadChoiceButton('Take Photo', 'Camera scan', $r('app.media.bi_upc_scan'), '#009F9A', 'camera')
-          this.UploadChoiceButton('Choose Photo', 'From gallery', $r('app.media.bi_cloud_upload'), '#1767C5', 'gallery')
+          this.UploadChoiceButton('Take Photo', 'Scan leaflet', $r('app.media.bi_upc_scan'), '#009F9A', 'camera')
+          this.UploadChoiceButton('Choose Photo', 'Guide image', $r('app.media.bi_cloud_upload'), '#1767C5', 'gallery')
         }
         .width('100%')
         Button('Upload PDF or document')
@@ -1034,7 +1062,7 @@ struct Index {
 
       this.InfoCard('Active Ingredient', this.activeIngredient + '\n' + this.ingredientNote, $r('app.media.bi_flask'), '#E0F6F1')
       this.InfoCard('How to Take', this.howToTake, $r('app.media.bi_list_check'), '#EAF2FF')
-      this.InfoCard('Set Reminder', this.reminderOneTime + ' ' + this.reminderOneLabel + '\n' + this.reminderTwoTime + ' ' + this.reminderTwoLabel, $r('app.media.bi_bell'), '#E5F7F1')
+      this.InfoCard('Set Reminder', this.buildReminderSummaryText(), $r('app.media.bi_bell'), '#E5F7F1')
       this.SourceTraceCard()
 
       Button('Set Reminders')
@@ -1052,7 +1080,11 @@ struct Index {
           }
         })
         .onClick(() => {
-          this.currentTab = 2;
+          if (this.autoGenerateReminders && this.pendingReminderPlanItems.length > 0) {
+            this.showReminderConfirmDialog = true;
+          } else {
+            this.currentTab = 2;
+          }
         })
     }
     .width('100%')
@@ -1090,14 +1122,20 @@ struct Index {
   ReminderView() {
     Column({ space: 16 }) {
       this.PageTop('Medication Reminder')
+      this.ReminderPlanBanner()
       Text('Today\'s Schedule')
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
         .fontColor('#111827')
         .width('100%')
 
-      this.ReminderCard(new ReminderItem(this.reminderOneTime, this.reminderOneLabel, '1 tablet', $r('app.media.bi_sun'), '#009F9A', '#E7FAF6'))
-      this.ReminderCard(new ReminderItem(this.reminderTwoTime, this.reminderTwoLabel, '1 tablet', $r('app.media.bi_moon_stars'), '#5648D9', '#F0EEFF'))
+      if (this.reminderPlanItems.length > 0) {
+        ForEach(this.reminderPlanItems, (item: ReminderItem) => {
+          this.ReminderCard(item)
+        }, (item: ReminderItem, index: number) => item.time + '-' + index.toString())
+      } else {
+        this.EmptyReminderCard()
+      }
 
       Button('Edit Schedule')
         .fontSize(15)
@@ -1116,6 +1154,68 @@ struct Index {
 
       this.AdherenceCard()
     }
+    .width('100%')
+  }
+
+  @Builder
+  ReminderPlanBanner() {
+    Column({ space: 6 }) {
+      Row({ space: 10 }) {
+        this.IconBubble($r('app.media.bi_bell'), '#E8F8F6', '#008A88')
+        Column({ space: 4 }) {
+          Text('Auto reminder plan')
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#111827')
+            .width('100%')
+          Text(this.reminderPlanStatus)
+            .fontSize(13)
+            .fontColor('#42566F')
+            .lineHeight(18)
+            .width('100%')
+        }
+        .layoutWeight(1)
+      }
+      if (this.reminderPlanWarning.length > 0) {
+        Text(this.reminderPlanWarning)
+          .fontSize(12)
+          .fontColor('#8A5A00')
+          .lineHeight(17)
+          .width('100%')
+          .padding({ left: 10, right: 10, top: 8, bottom: 8 })
+          .backgroundColor('#FFF8E6')
+          .borderRadius(8)
+      }
+      Text(this.reminderAlarmStatus)
+        .fontSize(12)
+        .fontColor(this.reminderAlarmStatus.indexOf('failed') >= 0 ? '#B45309' : '#007D83')
+        .lineHeight(17)
+        .width('100%')
+    }
+    .padding(14)
+    .backgroundColor(Color.White)
+    .border({ width: 1, color: '#DCEBED' })
+    .borderRadius(12)
+    .width('100%')
+  }
+
+  @Builder
+  EmptyReminderCard() {
+    Column({ space: 8 }) {
+      this.IconBubble($r('app.media.bi_clipboard_check'), '#EEF5FF', '#1767C5')
+      Text('No reminder schedule yet')
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111827')
+      Text('Upload a medicine guide from Home. MediClear will read the leaflet usage section and suggest reminder times.')
+        .fontSize(13)
+        .fontColor('#536175')
+        .lineHeight(18)
+        .textAlign(TextAlign.Center)
+    }
+    .padding(16)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
     .width('100%')
   }
 
@@ -1406,7 +1506,7 @@ struct Index {
       }
     })
     .onClick(() => {
-      this.takeMedicineGuidePhoto();
+      this.takeChatMedicinePhoto();
     })
   }
 
@@ -1545,6 +1645,7 @@ struct Index {
         .width('100%')
 
       Column({ space: 0 }) {
+        this.AutoReminderSettingRow()
         this.SettingRow('Reminder Notifications', 'On', $r('app.media.bi_bell'), '#EEF5FF', '#1767C5')
         this.SettingRow('Data & Privacy', '', $r('app.media.bi_shield_heart'), '#E8F8F6', '#008A88')
         this.SettingRow('Export History', '', $r('app.media.bi_box_arrow_up'), '#F1EDFF', '#6554D9')
@@ -1552,20 +1653,6 @@ struct Index {
       .backgroundColor(Color.White)
       .borderRadius(12)
       .clip(true)
-
-      Row() {
-        this.DarkModeIcon()
-        Text('Dark Mode')
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .fontColor('#263244')
-          .layoutWeight(1)
-        Toggle({ type: ToggleType.Switch, isOn: true })
-          .selectedColor('#009F9A')
-      }
-      .padding(14)
-      .backgroundColor(Color.White)
-      .borderRadius(12)
 
       this.SettingPanel('Help & Support', $r('app.media.bi_question_circle'), '#EAF2FF', '#1767C5')
       this.SettingPanel('About MediClear', $r('app.media.bi_info_circle'), '#E8F8F6', '#008A88')
@@ -1770,6 +1857,11 @@ struct Index {
           Text(item.dose)
             .fontSize(13)
             .fontColor('#344155')
+            .lineHeight(18)
+          Text(item.source)
+            .fontSize(11)
+            .fontColor('#64748B')
+            .lineHeight(16)
         }
         .layoutWeight(1)
         Text(item.dose)
@@ -1943,6 +2035,33 @@ struct Index {
   }
 
   @Builder
+  AutoReminderSettingRow() {
+    Row() {
+      this.SettingIcon($r('app.media.bi_bell'), '#E8F8F6', '#008A88')
+      Text('Auto Generate Reminders')
+        .fontSize(15)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#263244')
+        .layoutWeight(1)
+      Toggle({ type: ToggleType.Switch, isOn: this.autoGenerateReminders })
+        .selectedColor('#009F9A')
+        .onChange((isOn: boolean) => {
+          this.autoGenerateReminders = isOn;
+          if (!isOn) {
+            this.pendingReminderPlanItems = [];
+            this.pendingReminderPlanSummary = '';
+            this.pendingReminderPlanWarning = '';
+            this.showReminderConfirmDialog = false;
+          }
+          this.reminderPlanStatus = isOn ? 'Upload a medicine guide to generate reminders.' :
+            'Auto reminder generation is off.';
+        })
+    }
+    .padding(14)
+    .border({ width: { bottom: 1 }, color: '#EEF2F6' })
+  }
+
+  @Builder
   SettingRow(label: string, value: string, icon: Resource, background: string, tint: ResourceColor) {
     Row() {
       this.SettingIcon(icon, background, tint)
@@ -2005,28 +2124,6 @@ struct Index {
   }
 
   @Builder
-  DarkModeIcon() {
-    Stack() {
-      Text('')
-        .width(20)
-        .height(20)
-        .backgroundColor('#6554D9')
-        .borderRadius(10)
-      Text('')
-        .width(16)
-        .height(16)
-        .backgroundColor('#F1EDFF')
-        .borderRadius(8)
-        .offset({ x: 6, y: -4 })
-    }
-    .width(38)
-    .height(38)
-    .backgroundColor('#F1EDFF')
-    .borderRadius(12)
-    .margin({ right: 12 })
-  }
-
-  @Builder
   ProfileAvatarIcon() {
     Stack() {
       Text('')
@@ -2051,6 +2148,113 @@ struct Index {
     .height(72)
     .backgroundColor('#BFEFED')
     .borderRadius(36)
+  }
+
+  @Builder
+  ReminderConfirmDialog() {
+    Stack() {
+      Rect()
+        .fill('#66000000')
+        .width('100%')
+        .height('100%')
+      Column({ space: 14 }) {
+        Row({ space: 10 }) {
+          this.IconBubble($r('app.media.bi_bell'), '#E8F8F6', '#008A88')
+          Column({ space: 4 }) {
+            Text('Add Medicine Reminders')
+              .fontSize(18)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#111827')
+            Text(this.medicineName)
+              .fontSize(13)
+              .fontColor('#536175')
+              .maxLines(1)
+          }
+          .layoutWeight(1)
+        }
+        .width('100%')
+
+        Text(this.pendingReminderPlanSummary.length > 0 ? this.pendingReminderPlanSummary :
+          'MediClear generated this reminder plan from the captured medicine guide.')
+          .fontSize(13)
+          .fontColor('#42566F')
+          .lineHeight(18)
+          .width('100%')
+
+        Column({ space: 8 }) {
+          ForEach(this.pendingReminderPlanItems, (item: ReminderItem) => {
+            Row({ space: 10 }) {
+              Text(item.time)
+                .fontSize(16)
+                .fontWeight(FontWeight.Bold)
+                .fontColor('#111827')
+                .width(58)
+              Column({ space: 2 }) {
+                Text(item.label)
+                  .fontSize(13)
+                  .fontColor('#263244')
+                  .maxLines(1)
+                Text(item.dose)
+                  .fontSize(12)
+                  .fontColor('#617184')
+                  .maxLines(2)
+              }
+              .layoutWeight(1)
+            }
+            .padding(10)
+            .backgroundColor('#F6FBFC')
+            .border({ width: 1, color: '#DCEBED' })
+            .borderRadius(10)
+          }, (item: ReminderItem, index: number) => item.time + '-' + index.toString())
+        }
+        .width('100%')
+
+        if (this.pendingReminderPlanWarning.length > 0) {
+          Text(this.pendingReminderPlanWarning)
+            .fontSize(12)
+            .fontColor('#8A5A00')
+            .lineHeight(17)
+            .width('100%')
+            .padding({ left: 10, right: 10, top: 8, bottom: 8 })
+            .backgroundColor('#FFF8E6')
+            .borderRadius(8)
+        }
+
+        Row({ space: 10 }) {
+          Button('Cancel')
+            .fontSize(15)
+            .fontColor('#263244')
+            .backgroundColor('#FFFFFF')
+            .border({ width: 1, color: '#D6DEE8' })
+            .borderRadius(10)
+            .height(46)
+            .layoutWeight(1)
+            .onClick(() => {
+              this.dismissPendingReminderPlan();
+            })
+          Button('Add Reminders')
+            .fontSize(15)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(Color.White)
+            .backgroundColor('#009F9A')
+            .borderRadius(10)
+            .height(46)
+            .layoutWeight(1)
+            .onClick(() => {
+              this.confirmPendingReminderPlan();
+            })
+        }
+        .width('100%')
+      }
+      .width('88%')
+      .constraintSize({ maxWidth: 420 })
+      .padding(16)
+      .backgroundColor(Color.White)
+      .borderRadius(14)
+      .shadow({ radius: 24, color: '#33000000', offsetY: 8 })
+    }
+    .width('100%')
+    .height('100%')
   }
 
   @Builder
@@ -2147,8 +2351,9 @@ struct Index {
 
   private async takeMedicineGuidePhoto(): Promise<void> {
     this.showUploadSheet = false;
+    this.activeUploadPurpose = 'guide';
     this.uploadState = 'Opening camera...';
-    this.uploadSource = 'Camera is opening. Take a clear photo of the medicine box, label, or leaflet.';
+    this.uploadSource = 'Camera is opening. Take a clear photo of the medicine leaflet or instruction guide.';
 
     try {
       const helper = new MedicineGuideMediaHelper(getContext(this));
@@ -2162,8 +2367,9 @@ struct Index {
 
   private async selectMedicineGuideFile(): Promise<void> {
     this.showUploadSheet = false;
+    this.activeUploadPurpose = 'guide';
     this.uploadState = 'Opening file picker...';
-    this.uploadSource = 'Choose a medicine package image, label photo, leaflet image, or PDF.';
+    this.uploadSource = 'Choose a medicine leaflet photo, instruction guide image, or PDF.';
 
     try {
       const helper = new MedicineGuideMediaHelper(getContext(this));
@@ -2177,8 +2383,9 @@ struct Index {
 
   private async selectMedicineGuidePhoto(): Promise<void> {
     this.showUploadSheet = false;
+    this.activeUploadPurpose = 'guide';
     this.uploadState = 'Opening photo library...';
-    this.uploadSource = 'Choose a medicine package or leaflet photo from your gallery.';
+    this.uploadSource = 'Choose a medicine leaflet or instruction guide photo from your gallery.';
 
     try {
       const helper = new MedicineGuideMediaHelper(getContext(this));
@@ -2187,6 +2394,21 @@ struct Index {
     } catch (err) {
       this.uploadState = 'Photo upload cancelled';
       this.uploadSource = 'No photo was selected or the photo could not be copied.\nError: ' + JSON.stringify(err);
+    }
+  }
+
+  private async takeChatMedicinePhoto(): Promise<void> {
+    this.activeUploadPurpose = 'chat';
+    this.uploadState = 'Opening camera...';
+    this.uploadSource = 'Camera is opening. Take a clear photo of the medicine package or label.';
+
+    try {
+      const helper = new MedicineGuideMediaHelper(getContext(this));
+      const picked = await helper.takePhoto(getContext(this) as common.UIAbilityContext);
+      this.handleMedicineGuidePicked('chat-camera', picked);
+    } catch (err) {
+      this.uploadState = 'Camera cancelled';
+      this.uploadSource = 'No medicine photo was captured. Tap the camera card to try again.\nError: ' + JSON.stringify(err);
     }
   }
 
@@ -2212,6 +2434,16 @@ struct Index {
     this.backendKnowledgeStatus = '';
     this.backendKnowledgeDocumentId = '';
     this.backendKnowledgeTextLength = '';
+    if (this.activeUploadPurpose === 'guide') {
+      this.pendingReminderPlanItems = [];
+      this.pendingReminderPlanSummary = '';
+      this.pendingReminderPlanWarning = '';
+      this.showReminderConfirmDialog = false;
+      this.reminderPlanStatus = this.autoGenerateReminders ?
+        'Upload analysis in progress. Reminders will be generated after the leaflet is loaded.' :
+        'Upload analysis in progress. Auto reminder generation is off.';
+      this.reminderPlanWarning = '';
+    }
     this.startMedicineGuideUpload(sourceType);
   }
 
@@ -2219,12 +2451,15 @@ struct Index {
     this.showUploadSheet = false;
     this.uploadState = 'Extracting medicine guide text...';
     const guideUri = this.selectedGuideUri;
-    if (sourceType === 'camera') {
-      this.uploadSource = 'Photo captured. MediClear is extracting text from the medicine image.\nURI: ' + guideUri;
+    const isChatUpload = this.activeUploadPurpose === 'chat';
+    if (isChatUpload) {
+      this.uploadSource = 'Medicine photo captured. MediClear is matching the package to an official leaflet knowledge base.\nURI: ' + guideUri;
+    } else if (sourceType === 'camera') {
+      this.uploadSource = 'Guide photo captured. MediClear is extracting leaflet text.\nURI: ' + guideUri;
     } else if (sourceType === 'gallery') {
-      this.uploadSource = 'Photo selected. MediClear is extracting text from the medicine image.\nURI: ' + guideUri;
+      this.uploadSource = 'Guide photo selected. MediClear is extracting leaflet text.\nURI: ' + guideUri;
     } else {
-      this.uploadSource = 'File uploaded. MediClear is extracting text locally from the medicine image.\nURI: ' + guideUri;
+      this.uploadSource = 'Guide file uploaded. MediClear is extracting instruction text.\nURI: ' + guideUri;
     }
     try {
       console.info('[MediClearOCR] start OCR sourceType=' + sourceType + ' path=' + guideUri);
@@ -2248,9 +2483,11 @@ struct Index {
       this.applyRplMatchToParsedGuide(parsed, matches[0]);
       this.applyParsedMedicineGuide(parsed);
       this.uploadState = 'RPL match found - preparing backend knowledge base...';
-      await this.prepareBackendKnowledgeBase(parsed);
+      await this.prepareBackendKnowledgeBase(parsed, !isChatUpload);
       this.uploadState = 'Analysis complete - backend knowledge base ready';
-      this.selectedGuide = 0;
+      if (!isChatUpload) {
+        this.selectedGuide = 0;
+      }
     } catch (err) {
       console.error('[MediClearOCR] OCR failed: ' + JSON.stringify(err));
       this.uploadState = 'Text extraction unavailable';
@@ -2258,7 +2495,7 @@ struct Index {
     }
   }
 
-  private async prepareBackendKnowledgeBase(parsed: ParsedMedicineGuide): Promise<void> {
+  private async prepareBackendKnowledgeBase(parsed: ParsedMedicineGuide, shouldPrepareReminders: boolean): Promise<void> {
     if (parsed.productId.length === 0) {
       this.backendKnowledgeStatus = 'Skipped - no product ID';
       return;
@@ -2272,7 +2509,8 @@ struct Index {
         throw new Error('Backend health check returned not ok');
       }
       this.backendKnowledgeStatus = 'Backend connected - downloading official leaflet';
-      const document: BackendDocumentResponse = await backend.extractRplLeaflet(parsed.productId, parsed.name);
+      const document: BackendDocumentResponse =
+        await backend.extractRplLeaflet(parsed.productId, parsed.name, parsed.leafletUrl, parsed.characteristicUrl);
       this.backendKnowledgeDocumentId = document.id.toString();
       this.backendKnowledgeTextLength = document.text_length.toString();
       this.backendKnowledgeStatus = document.status + ' via ' + document.extraction_method;
@@ -2281,12 +2519,58 @@ struct Index {
         '. You can ask about dosage, side effects, warnings, storage, and contraindications from the leaflet.');
       this.uploadSource = this.uploadSource + '\n\nBackend knowledge base is ready. Document ID: ' +
         this.backendKnowledgeDocumentId + '.';
+      if (shouldPrepareReminders && this.autoGenerateReminders) {
+        await this.prepareReminderPlan(backend, document, parsed);
+      } else if (shouldPrepareReminders) {
+        this.pendingReminderPlanItems = [];
+        this.pendingReminderPlanSummary = '';
+        this.pendingReminderPlanWarning = '';
+        this.reminderPlanStatus = 'Auto reminder generation is off. You can enable it in Settings.';
+        this.reminderAlarmStatus = 'No reminder plan set yet.';
+      }
     } catch (err) {
       const errorText = this.formatError(err);
       console.error('[MediClearBackend] Backend extraction failed: ' + errorText);
       this.backendKnowledgeStatus = 'Unavailable - ' + errorText;
+      if (shouldPrepareReminders) {
+        this.pendingReminderPlanItems = [];
+        this.pendingReminderPlanSummary = '';
+        this.pendingReminderPlanWarning = '';
+        this.showReminderConfirmDialog = false;
+        this.reminderPlanStatus = 'Reminder planning unavailable until the official leaflet knowledge base is ready.';
+        this.reminderPlanWarning = errorText;
+      }
       this.uploadSource = this.uploadSource + '\n\nBackend is not reachable at ' + MEDICLEAR_BACKEND_BASE_URL +
         '. Check that the phone and computer are on the same Wi-Fi and Windows Firewall allows the configured backend port.';
+    }
+  }
+
+  private async prepareReminderPlan(backend: BackendService, document: BackendDocumentResponse,
+    parsed: ParsedMedicineGuide): Promise<void> {
+    this.reminderPlanStatus = 'Generating reminders from official leaflet...';
+    try {
+      const plan: BackendReminderPlanResponse =
+        await backend.planMedicationReminders(document.id, parsed.name, this.buildPatientContext());
+      if (!this.autoGenerateReminders) {
+        this.pendingReminderPlanItems = [];
+        this.pendingReminderPlanSummary = '';
+        this.pendingReminderPlanWarning = '';
+        this.showReminderConfirmDialog = false;
+        this.reminderPlanStatus = 'Auto reminder generation is off. You can enable it in Settings.';
+        this.reminderAlarmStatus = 'No reminder plan set yet.';
+        return;
+      }
+      this.stageReminderPlanForConfirmation(plan);
+      this.uploadSource = this.uploadSource + '\n\nReminder plan: ' + plan.summary;
+      if (this.pendingReminderPlanItems.length > 0) {
+        this.showReminderConfirmDialog = true;
+        this.reminderAlarmStatus = 'Reminder plan generated. Confirm before adding it.';
+      }
+    } catch (err) {
+      const errorText = this.formatError(err);
+      console.error('[MediClearReminder] reminder planning failed: ' + errorText);
+      this.reminderPlanStatus = 'Reminder planning failed. Confirm the leaflet dose manually before setting reminders.';
+      this.reminderPlanWarning = errorText;
     }
   }
 
@@ -2462,7 +2746,7 @@ struct Index {
     this.chatMessages = [];
     this.chatStatus = 'No active knowledge base';
     this.uploadState = 'No medicine guide scanned yet';
-    this.uploadSource = 'Tap the camera card to scan a medicine package.';
+    this.uploadSource = 'Tap Upload Medicine Guide on Home to scan a leaflet, or use Chat to scan a medicine package.';
   }
 
   private async sendMedicineChatQuestion(): Promise<void> {
@@ -2583,6 +2867,173 @@ struct Index {
     this.productId = parsed.productId;
     this.matchedKeywords = parsed.matchedKeywords;
     this.matchedPackage = parsed.matchedPackage;
+    this.reminderOneDose = this.extractDoseFromHowToTake(parsed.howToTake);
+    this.reminderTwoDose = this.reminderOneDose;
+    this.pendingReminderPlanItems = [];
+  }
+
+  private stageReminderPlanForConfirmation(plan: BackendReminderPlanResponse): void {
+    this.reminderPlanStatus = plan.summary.length > 0 ? plan.summary : 'Reminder plan generated from official leaflet.';
+    this.reminderPlanWarning = plan.warning;
+    this.pendingReminderPlanSummary = this.reminderPlanStatus;
+    this.pendingReminderPlanWarning = plan.warning;
+
+    if (plan.status === 'blocked') {
+      this.pendingReminderPlanItems = [];
+      this.showReminderConfirmDialog = false;
+      this.reminderAlarmStatus = plan.warning.length > 0 ? plan.warning : 'Reminder was not created because the leaflet safety check needs attention.';
+      return;
+    }
+
+    if (plan.howToTake.length > 0) {
+      this.howToTake = plan.howToTake;
+    }
+
+    const plannedItems: ReminderItem[] = [];
+    for (let index = 0; index < plan.reminders.length; index++) {
+      const item: BackendReminderPlanItem = plan.reminders[index];
+      plannedItems.push(new ReminderItem(
+        item.time,
+        item.label,
+        item.dose,
+        this.reminderIconForIndex(index),
+        this.reminderTintForIndex(index),
+        this.reminderBackgroundForIndex(index),
+        item.source.length > 0 ? item.source : 'Official leaflet reminder plan'
+      ));
+    }
+
+    if (plannedItems.length > 0) {
+      this.pendingReminderPlanItems = plannedItems;
+      this.reminderOneTime = plannedItems[0].time;
+      this.reminderOneLabel = plannedItems[0].label;
+      this.reminderOneDose = plannedItems[0].dose;
+      if (plannedItems.length > 1) {
+        this.reminderTwoTime = plannedItems[1].time;
+        this.reminderTwoLabel = plannedItems[1].label;
+        this.reminderTwoDose = plannedItems[1].dose;
+      }
+    } else {
+      this.pendingReminderPlanItems = [];
+      this.reminderAlarmStatus = 'No valid reminder times were generated.';
+    }
+  }
+
+  private confirmPendingReminderPlan(): void {
+    if (this.pendingReminderPlanItems.length === 0) {
+      this.showReminderConfirmDialog = false;
+      this.reminderAlarmStatus = 'No reminder plan to add.';
+      return;
+    }
+
+    this.reminderPlanItems = this.pendingReminderPlanItems;
+    this.showReminderConfirmDialog = false;
+    this.setInAppMedicineReminders('Reminder plan added to MediClear.');
+    this.pendingReminderPlanItems = [];
+    this.pendingReminderPlanSummary = '';
+    this.pendingReminderPlanWarning = '';
+    this.currentTab = 2;
+    promptAction.showToast({
+      message: 'Reminder added successfully!',
+      duration: 2200
+    });
+  }
+
+  private dismissPendingReminderPlan(): void {
+    this.showReminderConfirmDialog = false;
+    this.pendingReminderPlanItems = [];
+    this.pendingReminderPlanSummary = '';
+    this.pendingReminderPlanWarning = '';
+    this.reminderAlarmStatus = 'Generated reminder plan was not added.';
+  }
+
+  private setInAppMedicineReminders(successMessage: string): void {
+    if (this.reminderPlanItems.length === 0) {
+      this.reminderAlarmStatus = 'No reminder plan to schedule.';
+      return;
+    }
+
+    const times: string[] = [];
+    for (let index = 0; index < this.reminderPlanItems.length; index++) {
+      const item = this.reminderPlanItems[index];
+      if (times.indexOf(item.time) < 0) {
+        times.push(item.time);
+      }
+    }
+
+    if (times.length === 0) {
+      this.reminderAlarmStatus = 'No valid reminder times were generated.';
+      return;
+    }
+    this.reminderAlarmStatus = successMessage + ' Times: ' + times.join(', ') +
+      '. System alarm integration is pending approval.';
+  }
+
+  private buildReminderSummaryText(): string {
+    if (this.reminderPlanItems.length === 0) {
+      return this.reminderPlanStatus;
+    }
+
+    const lines: string[] = [];
+    for (let index = 0; index < this.reminderPlanItems.length; index++) {
+      const item = this.reminderPlanItems[index];
+      lines.push(item.time + ' ' + item.label + ' - ' + item.dose);
+    }
+    return lines.join('\n');
+  }
+
+  private extractDoseFromHowToTake(value: string): string {
+    const lines = value.split('\n');
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index].trim();
+      if (line.toLowerCase().indexOf('dose:') === 0) {
+        return line.substring(5).trim();
+      }
+      if (line.toLowerCase().indexOf('capsule') >= 0 || line.toLowerCase().indexOf('tablet') >= 0 ||
+        line.toLowerCase().indexOf('ml') >= 0) {
+        return line;
+      }
+    }
+    return 'Confirm dose';
+  }
+
+  private reminderIconForIndex(index: number): Resource {
+    if (index === 0) {
+      return $r('app.media.bi_sun');
+    }
+    if (index === 1) {
+      return $r('app.media.bi_clock_history');
+    }
+    if (index === 2) {
+      return $r('app.media.bi_moon_stars');
+    }
+    return $r('app.media.bi_bell');
+  }
+
+  private reminderTintForIndex(index: number): string {
+    if (index === 0) {
+      return '#009F9A';
+    }
+    if (index === 1) {
+      return '#1767C5';
+    }
+    if (index === 2) {
+      return '#5648D9';
+    }
+    return '#B45309';
+  }
+
+  private reminderBackgroundForIndex(index: number): string {
+    if (index === 0) {
+      return '#E7FAF6';
+    }
+    if (index === 1) {
+      return '#EEF5FF';
+    }
+    if (index === 2) {
+      return '#F0EEFF';
+    }
+    return '#FFF8E6';
   }
 
   private parseMedicineGuide(text: string): ParsedMedicineGuide {
