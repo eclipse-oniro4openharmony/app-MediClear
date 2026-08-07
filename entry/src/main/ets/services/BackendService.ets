@@ -1,6 +1,8 @@
 import http from '@ohos.net.http';
 import {
+  buildDocumentFactsUrl,
   buildLatestDocumentByProductUrl,
+  buildLatestLeafletByProductUrl,
   buildMedicineChatUrl,
   buildReminderPlanUrl,
   buildRplDocumentExtractUrl,
@@ -118,8 +120,19 @@ export class BackendReminderPlanResponse {
   dose: string = '';
   frequency: string = '';
   timing: string = '';
+  duration: string = '';
   warning: string = '';
   reminders: BackendReminderPlanItem[] = [];
+}
+
+export class BackendMedicineFactsResponse {
+  documentId: number = 0;
+  medicineName: string = '';
+  activeIngredient: string = '';
+  howToTake: string = '';
+  contraindications: string = '';
+  warnings: string = '';
+  source: string = '';
 }
 
 export class BackendService {
@@ -195,6 +208,54 @@ export class BackendService {
       }
 
       return JSON.parse(response.result.toString()) as BackendDocumentResponse;
+    } finally {
+      request.destroy();
+    }
+  }
+
+  async getLatestLeafletByProduct(productId: string): Promise<BackendDocumentResponse> {
+    const request = http.createHttp();
+    try {
+      const response = await request.request(buildLatestLeafletByProductUrl(productId), {
+        method: http.RequestMethod.GET,
+        header: {
+          'Accept': 'application/json'
+        },
+        expectDataType: http.HttpDataType.STRING,
+        readTimeout: 15000,
+        connectTimeout: 8000
+      });
+
+      if (response.responseCode !== 200) {
+        throw new Error('Backend leaflet lookup failed: ' + response.responseCode.toString() + ' ' +
+        response.result.toString());
+      }
+
+      return JSON.parse(response.result.toString()) as BackendDocumentResponse;
+    } finally {
+      request.destroy();
+    }
+  }
+
+  async getMedicineFacts(documentId: number): Promise<BackendMedicineFactsResponse> {
+    const request = http.createHttp();
+    try {
+      const response = await request.request(buildDocumentFactsUrl(documentId), {
+        method: http.RequestMethod.GET,
+        header: {
+          'Accept': 'application/json'
+        },
+        expectDataType: http.HttpDataType.STRING,
+        readTimeout: 30000,
+        connectTimeout: 10000
+      });
+
+      if (response.responseCode !== 200) {
+        throw new Error('Backend medicine facts lookup failed: ' + response.responseCode.toString() + ' ' +
+        response.result.toString());
+      }
+
+      return JSON.parse(response.result.toString()) as BackendMedicineFactsResponse;
     } finally {
       request.destroy();
     }

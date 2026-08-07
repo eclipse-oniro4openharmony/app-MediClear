@@ -11,6 +11,7 @@ import {
   BackendChatResponse,
   BackendDocumentResponse,
   BackendHealthResponse,
+  BackendMedicineFactsResponse,
   BackendReminderPlanItem,
   BackendReminderPlanResponse,
   PatientContext
@@ -39,14 +40,33 @@ class MedicineRecord {
   status: string;
   tint: string;
   productId: string;
+  activeIngredient: string;
+  ingredientNote: string;
+  howToTake: string;
+  contraindications: string;
+  avoidWarnings: string;
+  doctorWarnings: string;
+  leafletUrl: string;
+  sourceNote: string;
 
-  constructor(name: string, subtitle: string, date: string, status: string, tint: string, productId: string = '') {
+  constructor(name: string, subtitle: string, date: string, status: string, tint: string, productId: string = '',
+    activeIngredient: string = '', ingredientNote: string = '', howToTake: string = '',
+    contraindications: string = '', avoidWarnings: string = '', doctorWarnings: string = '',
+    leafletUrl: string = '', sourceNote: string = '') {
     this.name = name;
     this.subtitle = subtitle;
     this.date = date;
     this.status = status;
     this.tint = tint;
     this.productId = productId;
+    this.activeIngredient = activeIngredient;
+    this.ingredientNote = ingredientNote;
+    this.howToTake = howToTake;
+    this.contraindications = contraindications;
+    this.avoidWarnings = avoidWarnings;
+    this.doctorWarnings = doctorWarnings;
+    this.leafletUrl = leafletUrl;
+    this.sourceNote = sourceNote;
   }
 }
 
@@ -58,9 +78,15 @@ class ReminderItem {
   tint: string;
   background: string;
   source: string;
+  durationDays: number;
+  durationLabel: string;
+  startDate: string;
+  endDate: string;
+  medicineName: string;
 
   constructor(time: string, label: string, dose: string, icon: Resource, tint: string, background: string,
-    source: string = 'Suggested reminder') {
+    source: string = 'Suggested reminder', durationDays: number = 1, durationLabel: string = '',
+    startDate: string = '', endDate: string = '', medicineName: string = '') {
     this.time = time;
     this.label = label;
     this.dose = dose;
@@ -68,6 +94,37 @@ class ReminderItem {
     this.tint = tint;
     this.background = background;
     this.source = source;
+    this.durationDays = durationDays;
+    this.durationLabel = durationLabel;
+    this.startDate = startDate;
+    this.endDate = endDate;
+    this.medicineName = medicineName;
+  }
+}
+
+class ReminderStorageRecord {
+  time: string;
+  label: string;
+  dose: string;
+  source: string;
+  durationDays: number;
+  durationLabel: string;
+  startDate: string;
+  endDate: string;
+  medicineName: string;
+
+  constructor(time: string = '', label: string = '', dose: string = '', source: string = '',
+    durationDays: number = 1, durationLabel: string = '', startDate: string = '', endDate: string = '',
+    medicineName: string = '') {
+    this.time = time;
+    this.label = label;
+    this.dose = dose;
+    this.source = source;
+    this.durationDays = durationDays;
+    this.durationLabel = durationLabel;
+    this.startDate = startDate;
+    this.endDate = endDate;
+    this.medicineName = medicineName;
   }
 }
 
@@ -164,8 +221,12 @@ struct Index {
   @State pendingReminderPlanItems: ReminderItem[] = [];
   @State pendingReminderPlanSummary: string = '';
   @State pendingReminderPlanWarning: string = '';
+  @State pendingReminderPlanDuration: string = '';
   @State medicines: MedicineRecord[] = [];
   @State historySearchQuery: string = '';
+  @State showHistoryDetail: boolean = false;
+  @State selectedHistoryKey: string = '';
+  @State historyDetailStatus: string = '';
 
   private sexOptions: SelectOption[] = [
     { value: 'Male' },
@@ -212,6 +273,8 @@ struct Index {
 
   private historyPreferencesName: string = 'mediclear_history';
   private historyPreferencesKey: string = 'medicine_history';
+  private reminderPreferencesName: string = 'mediclear_reminders';
+  private reminderPreferencesKey: string = 'medicine_reminders';
   private chatMarkdownController: MarkdownController = new MarkdownController();
 
   aboutToAppear(): void {
@@ -228,6 +291,7 @@ struct Index {
       .setUlPointSize(4);
     this.chatMarkdownController.setBlockSpacing(6);
     this.loadMedicineHistory();
+    this.loadMedicineReminders();
   }
 
   build() {
@@ -356,7 +420,6 @@ struct Index {
         this.EmptyRecentMedicineCard()
       }
       this.PrivacyCard()
-      this.GuideTabs()
     }
     .width('100%')
   }
@@ -726,85 +789,20 @@ struct Index {
 
   @Builder
   UploadAnalysisPanel() {
-    Column({ space: 10 }) {
+    Column({ space: 12 }) {
       Row({ space: 12 }) {
         this.IconBubble($r('app.media.bi_clipboard_check'), '#E8F8F6', '#008A88')
-        Column({ space: 4 }) {
-          Text('Medicine guide analysis')
-            .fontSize(16)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#111827')
-          Text(this.uploadState)
-            .fontSize(13)
-            .fontColor('#536175')
-        }
-        .layoutWeight(1)
-      }
-      Text(this.uploadSource)
-        .fontSize(12)
-        .fontColor('#005F68')
-        .lineHeight(18)
-        .width('100%')
-        .padding({ left: 12, right: 12, top: 10, bottom: 10 })
-        .backgroundColor('#E8F8F6')
-        .borderRadius(10)
-      if (this.extractedOcrText.length > 0) {
-        Column({ space: 6 }) {
-          Text('Extracted text')
-            .fontSize(13)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#111827')
-            .width('100%')
-          Text(this.extractedOcrText)
-            .fontSize(12)
-            .fontColor('#334155')
-            .lineHeight(18)
-            .width('100%')
-        }
-        .padding({ left: 12, right: 12, top: 10, bottom: 10 })
-        .backgroundColor('#F8FCFC')
-        .border({ width: 1, color: '#DCEBED' })
-        .borderRadius(10)
-        .width('100%')
-      }
-      if (this.leafletUrl.length > 0) {
-        this.RplEndpointCard()
-      }
-      Row({ space: 10 }) {
-        Button('Take Photo')
-          .fontSize(14)
-          .fontColor(Color.White)
-          .backgroundColor('#009F9A')
-          .borderRadius(8)
-          .height(42)
+        Text('Medicine guide analysis')
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
           .layoutWeight(1)
-          .stateStyles({
-            pressed: {
-              .opacity(0.82)
-              .scale({ x: 0.98, y: 0.98 })
-            }
-          })
-          .onClick(() => {
-            this.takeMedicineGuidePhoto();
-          })
-        Button('Upload File')
-          .fontSize(14)
-          .fontColor('#007D83')
-          .backgroundColor('#FFFFFF')
-          .border({ width: 1, color: '#B7DFDC' })
-          .borderRadius(8)
-          .height(42)
-          .layoutWeight(1)
-          .stateStyles({
-            pressed: {
-              .opacity(0.82)
-              .scale({ x: 0.98, y: 0.98 })
-            }
-          })
-          .onClick(() => {
-            this.selectMedicineGuideFile();
-          })
       }
+      .width('100%')
+
+      this.AnalysisFactRow('Medicine', this.displayAnalysisValue(this.medicineName))
+      this.AnalysisFactRow('Active ingredient', this.displayAnalysisValue(this.activeIngredient))
+      this.AnalysisFactRow('How to take', this.displayAnalysisValue(this.howToTake))
     }
     .padding(14)
     .backgroundColor(Color.White)
@@ -813,6 +811,26 @@ struct Index {
     .width('100%')
   }
 
+  @Builder
+  AnalysisFactRow(label: string, value: string) {
+    Column({ space: 5 }) {
+      Text(label)
+        .fontSize(12)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#007D83')
+        .width('100%')
+      Text(value)
+        .fontSize(13)
+        .fontColor('#263244')
+        .lineHeight(18)
+        .width('100%')
+    }
+    .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+    .backgroundColor('#F8FCFC')
+    .border({ width: 1, color: '#DCEBED' })
+    .borderRadius(10)
+    .width('100%')
+  }
   @Builder
   UploadChoiceSheet() {
     Column() {
@@ -919,93 +937,6 @@ struct Index {
   }
 
   @Builder
-  RplEndpointCard() {
-    Column({ space: 8 }) {
-      Row({ space: 8 }) {
-        Image($r('app.media.bi_database_lock'))
-          .width(18)
-          .height(18)
-          .fillColor('#007D83')
-        Text('Local RPL database match')
-          .fontSize(14)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#111827')
-      }
-      .width('100%')
-
-      Text('RPL identifier: ' + this.rplIdentifier)
-        .fontSize(12)
-        .fontColor('#334155')
-        .width('100%')
-      Text('Product ID: ' + this.productId)
-        .fontSize(12)
-        .fontWeight(FontWeight.Bold)
-        .fontColor('#111827')
-        .width('100%')
-      Text('Matched keywords: ' + this.matchedKeywords)
-        .fontSize(12)
-        .fontColor('#334155')
-        .lineHeight(17)
-        .width('100%')
-      Text(this.matchedPackage)
-        .fontSize(12)
-        .fontColor('#334155')
-        .lineHeight(17)
-        .width('100%')
-      Text('Leaflet PDF endpoint')
-        .fontSize(12)
-        .fontWeight(FontWeight.Bold)
-        .fontColor('#007D83')
-        .width('100%')
-      Text(this.leafletUrl)
-        .fontSize(11)
-        .fontColor('#42566F')
-        .lineHeight(16)
-        .width('100%')
-      Text('Characteristic PDF endpoint')
-        .fontSize(12)
-        .fontWeight(FontWeight.Bold)
-        .fontColor('#007D83')
-        .width('100%')
-      Text(this.characteristicUrl)
-        .fontSize(11)
-        .fontColor('#42566F')
-        .lineHeight(16)
-        .width('100%')
-      if (this.backendKnowledgeStatus.length > 0) {
-        Text('Backend knowledge base')
-          .fontSize(12)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#007D83')
-          .width('100%')
-          .margin({ top: 4 })
-        Text('Status: ' + this.backendKnowledgeStatus)
-          .fontSize(11)
-          .fontColor('#42566F')
-          .lineHeight(16)
-          .width('100%')
-        Text('Backend: ' + MEDICLEAR_BACKEND_BASE_URL)
-          .fontSize(11)
-          .fontColor('#42566F')
-          .lineHeight(16)
-          .width('100%')
-        if (this.backendKnowledgeDocumentId.length > 0) {
-          Text('Document ID: ' + this.backendKnowledgeDocumentId + ' | Text length: ' + this.backendKnowledgeTextLength)
-            .fontSize(11)
-            .fontColor('#42566F')
-            .lineHeight(16)
-            .width('100%')
-        }
-      }
-    }
-    .padding(12)
-    .backgroundColor('#F0FAF9')
-    .border({ width: 1, color: '#B7DFDC' })
-    .borderRadius(10)
-    .width('100%')
-  }
-
-  @Builder
   GuideTabs() {
     Column({ space: 12 }) {
       Row({ space: 8 }) {
@@ -1073,30 +1004,6 @@ struct Index {
 
       this.InfoCard('Active Ingredient', this.activeIngredient + '\n' + this.ingredientNote, $r('app.media.bi_flask'), '#E0F6F1')
       this.InfoCard('How to Take', this.howToTake, $r('app.media.bi_list_check'), '#EAF2FF')
-      this.InfoCard('Set Reminder', this.buildReminderSummaryText(), $r('app.media.bi_bell'), '#E5F7F1')
-      this.SourceTraceCard()
-
-      Button('Set Reminders')
-        .fontSize(18)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(Color.White)
-        .backgroundColor('#009F9A')
-        .borderRadius(10)
-        .height(54)
-        .width('100%')
-        .stateStyles({
-          pressed: {
-            .opacity(0.82)
-            .scale({ x: 0.98, y: 0.98 })
-          }
-        })
-        .onClick(() => {
-          if (this.autoGenerateReminders && this.pendingReminderPlanItems.length > 0) {
-            this.showReminderConfirmDialog = true;
-          } else {
-            this.currentTab = 2;
-          }
-        })
     }
     .width('100%')
   }
@@ -1232,58 +1139,127 @@ struct Index {
 
   @Builder
   HistoryView() {
-    Column({ space: 16 }) {
-      this.PageTop('Medicine History')
-      TextInput({ placeholder: 'Search medicines', text: this.historySearchQuery })
-          .fontSize(14)
+    if (this.showHistoryDetail) {
+      this.HistoryDetailView(this.selectedHistoryRecord())
+    } else {
+      Column({ space: 16 }) {
+        this.PageTop('Medicine History')
+        TextInput({ placeholder: 'Search medicines', text: this.historySearchQuery })
+            .fontSize(14)
+            .fontColor('#111827')
+            .placeholderColor('#7A8797')
+            .padding({ left: 14, right: 14 })
+            .height(44)
+            .backgroundColor(Color.White)
+            .borderRadius(10)
+            .border({ width: 1, color: '#E4EAF0' })
+            .width('100%')
+            .onChange((value: string) => {
+              this.historySearchQuery = value;
+            })
+
+        Text('Recent Entries')
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
           .fontColor('#111827')
-          .placeholderColor('#7A8797')
-          .padding({ left: 14, right: 14 })
-          .height(44)
-          .backgroundColor(Color.White)
-          .borderRadius(10)
-          .border({ width: 1, color: '#E4EAF0' })
           .width('100%')
-          .onChange((value: string) => {
-            this.historySearchQuery = value;
-          })
 
-      Text('Recent Entries')
-        .fontSize(16)
-        .fontWeight(FontWeight.Bold)
-        .fontColor('#111827')
-        .width('100%')
-
-      if (this.filteredMedicineHistory().length > 0) {
-        Column({ space: 0 }) {
-          ForEach(this.filteredMedicineHistory(), (item: MedicineRecord) => {
-            this.HistoryRow(item)
-          }, (item: MedicineRecord) => item.productId.length > 0 ? item.productId : item.name)
+        if (this.filteredMedicineHistory().length > 0) {
+          Column({ space: 0 }) {
+            ForEach(this.filteredMedicineHistory(), (item: MedicineRecord) => {
+              this.HistoryRow(item)
+            }, (item: MedicineRecord) => item.productId.length > 0 ? item.productId : item.name)
+          }
+          .backgroundColor(Color.White)
+          .borderRadius(12)
+          .clip(true)
+        } else {
+          Column({ space: 10 }) {
+            this.IconBubble($r('app.media.bi_clock_history'), '#F0EDFF', '#6554D9')
+            Text('No medicine history yet')
+              .fontSize(16)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#111827')
+            Text(this.medicines.length > 0 ? 'No medicines match your search.' :
+              'Take a photo or upload a medicine guide. Matched medicines will appear here automatically.')
+              .fontSize(13)
+              .fontColor('#536175')
+              .lineHeight(18)
+              .textAlign(TextAlign.Center)
+          }
+          .padding(18)
+          .backgroundColor(Color.White)
+          .borderRadius(12)
+          .width('100%')
         }
-        .backgroundColor(Color.White)
-        .borderRadius(12)
-        .clip(true)
-      } else {
-        Column({ space: 10 }) {
-          this.IconBubble($r('app.media.bi_clock_history'), '#F0EDFF', '#6554D9')
-          Text('No medicine history yet')
-            .fontSize(16)
+      }
+      .width('100%')
+    }
+  }
+
+  @Builder
+  HistoryDetailView(record: MedicineRecord) {
+    Column({ space: 16 }) {
+      this.HistoryDetailTop()
+      Row({ space: 14 }) {
+        this.PillBottle(record.tint)
+        Column({ space: 4 }) {
+          Text(record.name)
+            .fontSize(18)
             .fontWeight(FontWeight.Bold)
             .fontColor('#111827')
-          Text(this.medicines.length > 0 ? 'No medicines match your search.' :
-            'Take a photo or upload a medicine guide. Matched medicines will appear here automatically.')
-            .fontSize(13)
-            .fontColor('#536175')
-            .lineHeight(18)
-            .textAlign(TextAlign.Center)
+            .maxLines(2)
         }
-        .padding(18)
-        .backgroundColor(Color.White)
-        .borderRadius(12)
-        .width('100%')
+        .layoutWeight(1)
       }
+      .padding(16)
+      .backgroundColor(Color.White)
+      .borderRadius(12)
+      .border({ width: 1, color: '#E3ECF2' })
+      .width('100%')
+
+      this.HistoryInfoCard('Active Ingredient',
+        this.historyTextOrFallback(this.cleanActiveIngredient(record.activeIngredient), 'Loading active ingredient...'),
+        '', $r('app.media.bi_flask'), '#E8F8F6', '#008A88')
+      this.HistoryInfoCard('How to Take',
+        this.historyTextOrFallback(record.howToTake, 'Loading usage instructions...'),
+        '',
+        $r('app.media.bi_list_check'), '#EEF5FF', '#1767C5')
     }
     .width('100%')
+  }
+
+  @Builder
+  HistoryDetailTop() {
+    Row() {
+      Stack() {
+        Image($r('app.media.bi_chevron_left'))
+          .width(22)
+          .height(22)
+          .fillColor('#20324A')
+      }
+      .width(40)
+      .height(40)
+      .borderRadius(20)
+      .stateStyles({
+        pressed: {
+          .opacity(0.82)
+          .scale({ x: 0.94, y: 0.94 })
+        }
+      })
+      .onClick(() => {
+        this.showHistoryDetail = false;
+      })
+      Text('Medicine Details')
+        .fontSize(19)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111827')
+        .textAlign(TextAlign.Center)
+        .layoutWeight(1)
+      this.LogoMark(30)
+    }
+    .width('100%')
+    .height(42)
   }
 
   @Builder
@@ -1698,6 +1674,7 @@ struct Index {
         this.currentTab = 2;
       } else if (item.title === 'Medicine History') {
         this.currentTab = 1;
+        this.showHistoryDetail = false;
       }
     })
   }
@@ -1711,9 +1688,11 @@ struct Index {
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
           .fontColor('#111827')
-        Text(record.subtitle)
-          .fontSize(12)
-          .fontColor('#5B6778')
+        if (record.subtitle.trim().length > 0) {
+          Text(record.subtitle)
+            .fontSize(12)
+            .fontColor('#5B6778')
+        }
         Text('Updated ' + record.date)
           .fontSize(11)
           .fontColor('#5B6778')
@@ -1765,9 +1744,6 @@ struct Index {
           .fontSize(15)
           .fontWeight(FontWeight.Bold)
           .fontColor('#111827')
-        Text(record.subtitle)
-          .fontSize(12)
-          .fontColor('#5B6778')
       }
       .layoutWeight(1)
       Text(record.date)
@@ -1776,9 +1752,80 @@ struct Index {
         .padding({ left: 8, right: 8, top: 4, bottom: 4 })
         .backgroundColor('#E6F0FF')
         .borderRadius(8)
+      this.ChevronRight('#4D6682')
     }
     .padding(14)
     .border({ width: { bottom: 1 }, color: '#EEF2F6' })
+    .stateStyles({
+      pressed: {
+        .opacity(0.86)
+        .scale({ x: 0.98, y: 0.98 })
+      }
+    })
+    .onClick(() => {
+      this.openHistoryMedicineDetail(record);
+    })
+  }
+
+  @Builder
+  HistoryInfoCard(title: string, body: string, note: string, icon: Resource, background: string, tint: ResourceColor) {
+    Row({ space: 14 }) {
+      this.IconBubble(icon, background, tint)
+      Column({ space: 7 }) {
+        Text(title)
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
+        Text(body)
+          .fontSize(13)
+          .fontColor('#334155')
+          .lineHeight(20)
+        if (note.length > 0) {
+          Text(note)
+            .fontSize(11)
+            .fontColor('#64748B')
+            .lineHeight(16)
+        }
+      }
+      .layoutWeight(1)
+    }
+    .padding(16)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .border({ width: 1, color: '#E3ECF2' })
+    .width('100%')
+  }
+
+  @Builder
+  HistoryWarningCard(title: string, body: string) {
+    Row({ space: 12 }) {
+      Stack() {
+        Image($r('app.media.bi_exclamation_triangle'))
+          .width(22)
+          .height(22)
+          .fillColor('#B45309')
+      }
+      .width(38)
+      .height(38)
+      .backgroundColor('#FFF8E6')
+      .borderRadius(12)
+      Column({ space: 8 }) {
+        Text(title)
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#8A5A00')
+        Text(body)
+          .fontSize(13)
+          .fontColor('#111827')
+          .lineHeight(20)
+      }
+      .layoutWeight(1)
+    }
+    .padding(16)
+    .backgroundColor('#FFF8E6')
+    .border({ width: 1, color: '#F4D28A' })
+    .borderRadius(12)
+    .width('100%')
   }
 
   @Builder
@@ -1841,6 +1888,13 @@ struct Index {
       Row({ space: 14 }) {
         this.IconBubble(item.icon, item.background, item.tint)
         Column({ space: 4 }) {
+          if (item.medicineName.length > 0) {
+            Text(item.medicineName)
+              .fontSize(16)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#111827')
+              .maxLines(2)
+          }
           Text(item.time)
             .fontSize(28)
             .fontWeight(FontWeight.Bold)
@@ -1856,6 +1910,18 @@ struct Index {
             .fontSize(11)
             .fontColor('#64748B')
             .lineHeight(16)
+          if (item.durationLabel.length > 0) {
+            Text(item.durationLabel)
+              .fontSize(11)
+              .fontColor('#007D83')
+              .lineHeight(16)
+          }
+          if (item.startDate.length > 0 && item.endDate.length > 0) {
+            Text(item.startDate + ' - ' + item.endDate)
+              .fontSize(11)
+              .fontColor('#64748B')
+              .lineHeight(16)
+          }
         }
         .layoutWeight(1)
         Text(item.dose)
@@ -2045,6 +2111,7 @@ struct Index {
             this.pendingReminderPlanItems = [];
             this.pendingReminderPlanSummary = '';
             this.pendingReminderPlanWarning = '';
+            this.pendingReminderPlanDuration = '';
             this.showReminderConfirmDialog = false;
           }
           this.reminderPlanStatus = isOn ? 'Upload a medicine guide to generate reminders.' :
@@ -2175,6 +2242,27 @@ struct Index {
           .lineHeight(18)
           .width('100%')
 
+        if (this.pendingReminderPlanDuration.length > 0) {
+          Column({ space: 4 }) {
+            Text('Recommended duration')
+              .fontSize(12)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#42566F')
+              .width('100%')
+            Text(this.pendingReminderPlanDuration)
+              .fontSize(13)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#111827')
+              .lineHeight(18)
+              .width('100%')
+          }
+          .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+          .backgroundColor('#F6FBFC')
+          .border({ width: 1, color: '#DCEBED' })
+          .borderRadius(10)
+          .width('100%')
+        }
+
         Column({ space: 8 }) {
           ForEach(this.pendingReminderPlanItems, (item: ReminderItem) => {
             Row({ space: 10 }) {
@@ -2291,6 +2379,9 @@ struct Index {
     })
     .onClick(() => {
       this.showBasicsForm = false;
+      if (index === 1) {
+        this.showHistoryDetail = false;
+      }
       this.currentTab = index;
     })
   }
@@ -2432,6 +2523,7 @@ struct Index {
       this.pendingReminderPlanItems = [];
       this.pendingReminderPlanSummary = '';
       this.pendingReminderPlanWarning = '';
+      this.pendingReminderPlanDuration = '';
       this.showReminderConfirmDialog = false;
       this.reminderPlanStatus = this.autoGenerateReminders ?
         'Upload analysis in progress. Reminders will be generated after the leaflet is loaded.' :
@@ -2451,7 +2543,7 @@ struct Index {
     } else if (sourceType === 'camera') {
       this.uploadSource = 'Guide photo captured. MediClear is extracting leaflet text.\nURI: ' + guideUri;
     } else if (sourceType === 'gallery') {
-      this.uploadSource = 'Guide photo selected. MediClear is extracting leaflet text.\nURI: ' + guideUri;
+      this.uploadSource = 'Processing selected medicine guide.\nURI: ' + guideUri;
     } else {
       this.uploadSource = 'Guide file uploaded. MediClear is extracting instruction text.\nURI: ' + guideUri;
     }
@@ -2519,6 +2611,7 @@ struct Index {
         this.pendingReminderPlanItems = [];
         this.pendingReminderPlanSummary = '';
         this.pendingReminderPlanWarning = '';
+        this.pendingReminderPlanDuration = '';
         this.reminderPlanStatus = 'Auto reminder generation is off. You can enable it in Settings.';
         this.reminderAlarmStatus = 'No reminder plan set yet.';
       }
@@ -2530,6 +2623,7 @@ struct Index {
         this.pendingReminderPlanItems = [];
         this.pendingReminderPlanSummary = '';
         this.pendingReminderPlanWarning = '';
+        this.pendingReminderPlanDuration = '';
         this.showReminderConfirmDialog = false;
         this.reminderPlanStatus = 'Reminder planning unavailable until the official leaflet knowledge base is ready.';
         this.reminderPlanWarning = errorText;
@@ -2549,6 +2643,7 @@ struct Index {
         this.pendingReminderPlanItems = [];
         this.pendingReminderPlanSummary = '';
         this.pendingReminderPlanWarning = '';
+        this.pendingReminderPlanDuration = '';
         this.showReminderConfirmDialog = false;
         this.reminderPlanStatus = 'Auto reminder generation is off. You can enable it in Settings.';
         this.reminderAlarmStatus = 'No reminder plan set yet.';
@@ -2864,6 +2959,9 @@ struct Index {
     this.reminderOneDose = this.extractDoseFromHowToTake(parsed.howToTake);
     this.reminderTwoDose = this.reminderOneDose;
     this.pendingReminderPlanItems = [];
+    this.pendingReminderPlanSummary = '';
+    this.pendingReminderPlanWarning = '';
+    this.pendingReminderPlanDuration = '';
     this.upsertMedicineHistory(parsed);
   }
 
@@ -2882,11 +2980,19 @@ struct Index {
         if (item.name.length > 0) {
           records.push(new MedicineRecord(
             item.name,
-            item.subtitle,
+            this.cleanHistorySubtitle(item),
             item.date,
             item.status,
             item.tint,
-            item.productId
+            item.productId ? item.productId : '',
+            item.activeIngredient ? item.activeIngredient : '',
+            item.ingredientNote ? item.ingredientNote : '',
+            item.howToTake ? item.howToTake : '',
+            item.contraindications ? item.contraindications : '',
+            item.avoidWarnings ? item.avoidWarnings : '',
+            item.doctorWarnings ? item.doctorWarnings : '',
+            item.leafletUrl ? item.leafletUrl : '',
+            item.sourceNote ? item.sourceNote : ''
           ));
         }
       }
@@ -2906,6 +3012,75 @@ struct Index {
     }
   }
 
+  private async loadMedicineReminders(): Promise<void> {
+    try {
+      const store = await preferences.getPreferences(getContext(this), this.reminderPreferencesName);
+      const rawValue = await store.get(this.reminderPreferencesKey, '');
+      const raw = rawValue.toString();
+      if (raw.length === 0) {
+        return;
+      }
+
+      const parsedRecords = JSON.parse(raw) as ReminderStorageRecord[];
+      const records: ReminderItem[] = [];
+      for (let index = 0; index < parsedRecords.length; index++) {
+        const item = parsedRecords[index];
+        if (item.time.length > 0) {
+          records.push(new ReminderItem(
+            item.time,
+            item.label ? item.label : 'Medicine dose',
+            item.dose ? item.dose : 'Confirm dose',
+            this.reminderIconForIndex(index),
+            this.reminderTintForIndex(index),
+            this.reminderBackgroundForIndex(index),
+            item.source ? item.source : 'Saved medicine reminder',
+            item.durationDays > 0 ? item.durationDays : 7,
+            item.durationLabel ? item.durationLabel : '7 days (reference only; stop earlier if symptoms resolve)',
+            item.startDate ? item.startDate : '',
+            item.endDate ? item.endDate : '',
+            item.medicineName ? item.medicineName : ''
+          ));
+        }
+      }
+
+      this.reminderPlanItems = records;
+      if (records.length > 0) {
+        this.setInAppMedicineReminders('Loaded saved reminder schedule.');
+      }
+    } catch (err) {
+      console.error('[MediClearReminder] load failed: ' + JSON.stringify(err));
+    }
+  }
+
+  private async saveMedicineReminders(): Promise<void> {
+    try {
+      const store = await preferences.getPreferences(getContext(this), this.reminderPreferencesName);
+      await store.put(this.reminderPreferencesKey, JSON.stringify(this.toReminderStorageRecords()));
+      await store.flush();
+    } catch (err) {
+      console.error('[MediClearReminder] save failed: ' + JSON.stringify(err));
+    }
+  }
+
+  private toReminderStorageRecords(): ReminderStorageRecord[] {
+    const records: ReminderStorageRecord[] = [];
+    for (let index = 0; index < this.reminderPlanItems.length; index++) {
+      const item = this.reminderPlanItems[index];
+      records.push(new ReminderStorageRecord(
+        item.time,
+        item.label,
+        item.dose,
+        item.source,
+        item.durationDays,
+        item.durationLabel,
+        item.startDate,
+        item.endDate,
+        item.medicineName
+      ));
+    }
+    return records;
+  }
+
   private filteredMedicineHistory(): MedicineRecord[] {
     const query = this.normalizeMatchText(this.historySearchQuery);
     if (query.length === 0) {
@@ -2916,7 +3091,7 @@ struct Index {
     for (let index = 0; index < this.medicines.length; index++) {
       const item = this.medicines[index];
       const haystack = this.normalizeMatchText(item.name + ' ' + item.subtitle + ' ' + item.productId + ' ' +
-        item.status);
+        item.status + ' ' + item.activeIngredient + ' ' + item.contraindications);
       if (haystack.indexOf(query) >= 0) {
         results.push(item);
       }
@@ -2932,11 +3107,19 @@ struct Index {
     const productKey = parsed.productId.trim();
     const updated = new MedicineRecord(
       parsed.name,
-      parsed.subtitle.length > 0 ? parsed.subtitle : 'Medicine matched from local RPL database',
+      parsed.subtitle,
       this.formatHistoryTime(),
       'Ready',
       '#009F9A',
-      productKey
+      productKey,
+      parsed.activeIngredient,
+      parsed.ingredientNote,
+      parsed.howToTake,
+      parsed.contraindications,
+      parsed.avoid,
+      parsed.doctorIf,
+      parsed.leafletUrl,
+      parsed.sourceNote
     );
     const kept: MedicineRecord[] = [];
     for (let index = 0; index < this.medicines.length; index++) {
@@ -2951,6 +3134,238 @@ struct Index {
     this.saveMedicineHistory();
   }
 
+  private openHistoryMedicineDetail(record: MedicineRecord): void {
+    this.selectedHistoryKey = this.historyRecordKey(record);
+    this.showHistoryDetail = true;
+    this.historyDetailStatus = record.productId.trim().length > 0 && !this.hasUsableHistoryDetails(record)
+      ? 'Loading official leaflet details...'
+      : '';
+    void this.hydrateHistoryMedicineDetails(record);
+  }
+
+  private historyRecordKey(record: MedicineRecord): string {
+    return record.productId.length > 0 ? record.productId : record.name;
+  }
+
+  private selectedHistoryRecord(): MedicineRecord {
+    for (let index = 0; index < this.medicines.length; index++) {
+      const item = this.medicines[index];
+      if (this.historyRecordKey(item) === this.selectedHistoryKey) {
+        return item;
+      }
+    }
+
+    if (this.medicines.length > 0) {
+      return this.medicines[0];
+    }
+    return new MedicineRecord('', '', '', '', '#009F9A');
+  }
+
+  private historyTextOrFallback(value: string, fallback: string): string {
+    const clean = value.trim();
+    if (clean.length === 0 || this.isLegacyHistoryPlaceholder(clean)) {
+      return fallback;
+    }
+    return clean;
+  }
+
+  private displayAnalysisValue(value: string): string {
+    const clean = value.trim();
+    return clean.length > 0 ? clean : '-';
+  }
+
+  private isLegacyHistoryPlaceholder(value: string): boolean {
+    const lower = value.toLowerCase();
+    return lower.indexOf('check the official leaflet before use') >= 0 ||
+      lower.indexOf('open the official patient leaflet') >= 0 ||
+      lower.indexOf('follow the dose prescribed') >= 0 ||
+      lower.indexOf('do not change dose based only on package ocr') >= 0 ||
+      lower.indexOf('use reminders only after confirming the plan') >= 0 ||
+      lower.indexOf('see official leaflet') >= 0 ||
+      lower.indexOf('check interactions') >= 0 ||
+      lower.indexOf('ask pharmacist') >= 0;
+  }
+
+  private joinHistoryWarnings(avoid: string, doctorIf: string): string {
+    const lines: string[] = [];
+    if (avoid.trim().length > 0) {
+      lines.push(avoid.trim());
+    }
+    if (doctorIf.trim().length > 0) {
+      lines.push(doctorIf.trim());
+    }
+    return lines.join('\n');
+  }
+
+  private updateHistoryUsageFromLeafletPlan(howToTake: string): void {
+    const clean = howToTake.trim();
+    if (clean.length === 0 || this.productId.trim().length === 0) {
+      return;
+    }
+
+    const updated: MedicineRecord[] = [];
+    let changed = false;
+    for (let index = 0; index < this.medicines.length; index++) {
+      const item = this.medicines[index];
+      if (item.productId === this.productId) {
+        updated.push(new MedicineRecord(
+          item.name,
+          item.subtitle,
+          item.date,
+          item.status,
+          item.tint,
+          item.productId,
+          item.activeIngredient,
+          item.ingredientNote,
+          clean,
+          item.contraindications,
+          item.avoidWarnings,
+          item.doctorWarnings,
+          item.leafletUrl,
+          item.sourceNote
+        ));
+        changed = true;
+      } else {
+        updated.push(item);
+      }
+    }
+
+    if (changed) {
+      this.medicines = updated;
+      this.saveMedicineHistory();
+    }
+  }
+
+  private async hydrateHistoryMedicineDetails(record: MedicineRecord): Promise<void> {
+    if (record.productId.trim().length === 0) {
+      return;
+    }
+
+    if (!this.hasUsableHistoryDetails(record)) {
+      this.historyDetailStatus = 'Loading official leaflet details...';
+    }
+    try {
+      const backend = new BackendService();
+      let document: BackendDocumentResponse;
+      try {
+        document = await backend.getLatestLeafletByProduct(record.productId);
+      } catch (lookupErr) {
+        if (this.isBackendNotFoundError(lookupErr)) {
+          document = await backend.extractRplLeaflet(record.productId, record.name, record.leafletUrl);
+        } else {
+          throw new Error(JSON.stringify(lookupErr));
+        }
+      }
+      const facts = await backend.getMedicineFacts(document.id);
+      this.updateHistoryRecordWithFacts(record, facts);
+      this.historyDetailStatus = '';
+    } catch (err) {
+      this.historyDetailStatus = 'Official leaflet details failed to load: ' + JSON.stringify(err);
+      console.error('[MediClearHistory] detail hydration failed: ' + JSON.stringify(err));
+    }
+  }
+
+  private updateHistoryRecordWithFacts(record: MedicineRecord, facts: BackendMedicineFactsResponse): void {
+    const targetKey = this.historyRecordKey(record);
+    const updated: MedicineRecord[] = [];
+    let changed = false;
+
+    for (let index = 0; index < this.medicines.length; index++) {
+      const item = this.medicines[index];
+      if (this.historyRecordKey(item) === targetKey) {
+        updated.push(new MedicineRecord(
+          item.name,
+          this.historySubtitleWithFacts(item, facts),
+          item.date,
+          item.status,
+          item.tint,
+          item.productId,
+          this.cleanActiveIngredient(this.preferFactValue(facts.activeIngredient, item.activeIngredient)),
+          item.ingredientNote,
+          this.preferFactValue(facts.howToTake, item.howToTake),
+          this.preferFactValue(facts.contraindications, item.contraindications),
+          '',
+          '',
+          item.leafletUrl,
+          facts.source.length > 0 ? facts.source : item.sourceNote
+        ));
+        changed = true;
+      } else {
+        updated.push(item);
+      }
+    }
+
+    if (changed) {
+      this.medicines = updated;
+      this.saveMedicineHistory();
+    }
+  }
+
+  private preferFactValue(candidate: string, fallback: string): string {
+    const clean = candidate.trim();
+    if (clean.length === 0 || clean === 'Not found in the official leaflet context') {
+      return this.isLegacyHistoryPlaceholder(fallback) ? '' : fallback;
+    }
+    return clean;
+  }
+
+  private cleanActiveIngredient(value: string): string {
+    const clean = value.trim()
+      .replace(/\|/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/symetykonum/gi, 'simethicone')
+      .replace(/symetykonu/gi, 'simethicone')
+      .replace(/symetykon/gi, 'simethicone')
+      .replace(/simeticonum/gi, 'simethicone')
+      .replace(/bupropioni hydrochloridum/gi, 'bupropion hydrochloride')
+      .replace(/bupropionu chlorowodorek/gi, 'bupropion hydrochloride')
+      .trim();
+    return clean;
+  }
+
+  private isBackendNotFoundError(err: Error): boolean {
+    return JSON.stringify(err).indexOf('404') >= 0;
+  }
+
+  private hasUsableHistoryDetails(record: MedicineRecord): boolean {
+    return !this.isLegacyHistoryPlaceholder(record.howToTake) && record.howToTake.trim().length > 0 &&
+      !this.isLegacyHistoryPlaceholder(record.contraindications) && record.contraindications.trim().length > 0 &&
+      !this.isLegacyHistoryPlaceholder(record.activeIngredient) && record.activeIngredient.trim().length > 0;
+  }
+
+  private cleanHistorySubtitle(record: MedicineRecord): string {
+    if (!this.isLegacyHistoryPlaceholder(record.activeIngredient) && record.activeIngredient.trim().length > 0) {
+      return 'Active ingredient: ' + this.cleanActiveIngredient(record.activeIngredient);
+    }
+    if (this.containsNonEnglishDosageForm(record.subtitle)) {
+      return '';
+    }
+    return record.subtitle.trim();
+  }
+
+  private historySubtitleWithFacts(record: MedicineRecord, facts: BackendMedicineFactsResponse): string {
+    const activeIngredient = this.cleanActiveIngredient(this.preferFactValue(facts.activeIngredient,
+      record.activeIngredient));
+    if (activeIngredient.length > 0 && !this.isLegacyHistoryPlaceholder(activeIngredient)) {
+      return 'Active ingredient: ' + activeIngredient;
+    }
+    return this.cleanHistorySubtitle(record);
+  }
+
+  private containsNonEnglishDosageForm(value: string): boolean {
+    const normalized = this.normalizeMatchText(value);
+    return normalized.indexOf('tabletki') >= 0 ||
+      normalized.indexOf('tabletka') >= 0 ||
+      normalized.indexOf('kapsulki') >= 0 ||
+      normalized.indexOf('kapsulka') >= 0 ||
+      normalized.indexOf('zmodyfikowanym') >= 0 ||
+      normalized.indexOf('uwalnianiu') >= 0 ||
+      normalized.indexOf('roztwor') >= 0 ||
+      normalized.indexOf('zawiesina') >= 0 ||
+      normalized.indexOf('syrop') >= 0 ||
+      normalized.indexOf('krople') >= 0;
+  }
+
   private formatHistoryTime(): string {
     const now = new Date();
     const hours = now.getHours().toString().padStart(2, '0');
@@ -2963,9 +3378,14 @@ struct Index {
     this.reminderPlanWarning = plan.warning;
     this.pendingReminderPlanSummary = this.reminderPlanStatus;
     this.pendingReminderPlanWarning = plan.warning;
+    this.pendingReminderPlanDuration = this.formatReminderPlanDuration(plan.duration, plan.howToTake);
+    const durationDays = this.reminderDurationDays(this.pendingReminderPlanDuration);
+    const startDate = this.formatReminderDate(new Date());
+    const endDate = this.formatReminderDate(this.addDays(new Date(), durationDays - 1));
 
     if (plan.status === 'blocked') {
       this.pendingReminderPlanItems = [];
+      this.pendingReminderPlanDuration = '';
       this.showReminderConfirmDialog = false;
       this.reminderAlarmStatus = plan.warning.length > 0 ? plan.warning : 'Reminder was not created because the leaflet safety check needs attention.';
       return;
@@ -2973,6 +3393,7 @@ struct Index {
 
     if (plan.howToTake.length > 0) {
       this.howToTake = plan.howToTake;
+      this.updateHistoryUsageFromLeafletPlan(plan.howToTake);
     }
 
     const plannedItems: ReminderItem[] = [];
@@ -2985,7 +3406,12 @@ struct Index {
         this.reminderIconForIndex(index),
         this.reminderTintForIndex(index),
         this.reminderBackgroundForIndex(index),
-        item.source.length > 0 ? item.source : 'Official leaflet reminder plan'
+        this.medicineName + ' usage plan',
+        durationDays,
+        this.pendingReminderPlanDuration,
+        startDate,
+        endDate,
+        this.medicineName
       ));
     }
 
@@ -3001,6 +3427,7 @@ struct Index {
       }
     } else {
       this.pendingReminderPlanItems = [];
+      this.pendingReminderPlanDuration = '';
       this.reminderAlarmStatus = 'No valid reminder times were generated.';
     }
   }
@@ -3012,12 +3439,32 @@ struct Index {
       return;
     }
 
-    this.reminderPlanItems = this.pendingReminderPlanItems;
+    const addedItems: ReminderItem[] = [];
+    for (let index = 0; index < this.pendingReminderPlanItems.length; index++) {
+      const item = this.pendingReminderPlanItems[index];
+      addedItems.push(new ReminderItem(
+        item.time,
+        item.label,
+        item.dose,
+        item.icon,
+        item.tint,
+        item.background,
+        item.source,
+        item.durationDays,
+        item.durationLabel,
+        item.startDate,
+        item.endDate,
+        item.medicineName
+      ));
+    }
+    this.reminderPlanItems = this.reminderPlanItems.concat(addedItems);
+    this.saveMedicineReminders();
     this.showReminderConfirmDialog = false;
     this.setInAppMedicineReminders('Reminder plan added to MediClear.');
     this.pendingReminderPlanItems = [];
     this.pendingReminderPlanSummary = '';
     this.pendingReminderPlanWarning = '';
+    this.pendingReminderPlanDuration = '';
     this.currentTab = 2;
     promptAction.showToast({
       message: 'Reminder added successfully!',
@@ -3030,6 +3477,7 @@ struct Index {
     this.pendingReminderPlanItems = [];
     this.pendingReminderPlanSummary = '';
     this.pendingReminderPlanWarning = '';
+    this.pendingReminderPlanDuration = '';
     this.reminderAlarmStatus = 'Generated reminder plan was not added.';
   }
 
@@ -3040,10 +3488,14 @@ struct Index {
     }
 
     const times: string[] = [];
+    let maxDurationDays = 1;
     for (let index = 0; index < this.reminderPlanItems.length; index++) {
       const item = this.reminderPlanItems[index];
       if (times.indexOf(item.time) < 0) {
         times.push(item.time);
+      }
+      if (item.durationDays > maxDurationDays) {
+        maxDurationDays = item.durationDays;
       }
     }
 
@@ -3051,7 +3503,8 @@ struct Index {
       this.reminderAlarmStatus = 'No valid reminder times were generated.';
       return;
     }
-    this.reminderAlarmStatus = successMessage + ' Times: ' + times.join(', ') +
+    this.reminderAlarmStatus = successMessage + ' Times: ' + times.join(', ') + '. Duration: ' +
+      maxDurationDays.toString() + (maxDurationDays === 1 ? ' day' : ' days') +
       '. System alarm integration is pending approval.';
   }
 
@@ -3063,9 +3516,66 @@ struct Index {
     const lines: string[] = [];
     for (let index = 0; index < this.reminderPlanItems.length; index++) {
       const item = this.reminderPlanItems[index];
-      lines.push(item.time + ' ' + item.label + ' - ' + item.dose);
+      const duration = item.durationDays > 1 ? ' for ' + item.durationDays.toString() + ' days' : '';
+      lines.push(item.time + ' ' + item.label + ' - ' + item.dose + duration);
     }
     return lines.join('\n');
+  }
+
+  private formatReminderPlanDuration(duration: string, howToTake: string): string {
+    let value = duration.trim();
+    if (value.length === 0) {
+      value = this.extractDurationFromHowToTake(howToTake);
+    }
+    if (value.length === 0) {
+      return '7 days (reference only; stop earlier if symptoms resolve)';
+    }
+    const lower = value.toLowerCase();
+    if (value.indexOf('Not found') >= 0 || value.indexOf('Not set') >= 0 ||
+      lower.indexOf('as long as symptoms') >= 0 || lower.indexOf('symptoms persist') >= 0) {
+      return '7 days (reference only; stop earlier if symptoms resolve)';
+    }
+    return value;
+  }
+
+  private reminderDurationDays(durationLabel: string): number {
+    const lower = durationLabel.toLowerCase();
+    if (lower.indexOf('week') >= 0 || lower.indexOf('7 days') >= 0) {
+      return 7;
+    }
+
+    const dayMatch = lower.match(/(\d+)\s*days?/);
+    if (dayMatch !== null && dayMatch[1].length > 0) {
+      const days = Number.parseInt(dayMatch[1], 10);
+      if (Number.isFinite(days) && days > 0) {
+        return days;
+      }
+    }
+
+    return 7;
+  }
+
+  private addDays(date: Date, days: number): Date {
+    const next = new Date(date.getTime());
+    next.setDate(next.getDate() + days);
+    return next;
+  }
+
+  private formatReminderDate(date: Date): string {
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    return month + '/' + day;
+  }
+
+  private extractDurationFromHowToTake(value: string): string {
+    const lines = value.split('\n');
+    for (let index = 0; index < lines.length; index++) {
+      const line = lines[index].trim();
+      if (line.toLowerCase().indexOf('duration:') === 0) {
+        return line.substring(9).trim();
+      }
+    }
+    return '';
   }
 
   private extractDoseFromHowToTake(value: string): string {
@@ -3172,8 +3682,9 @@ struct Index {
   private applyRplMatchToParsedGuide(parsed: ParsedMedicineGuide, record: RplMedicineRecord): void {
     const matchedName = record.name.toLowerCase();
     parsed.name = this.buildRplDisplayName(record);
-    parsed.subtitle = record.dosageForm.length > 0 ? record.dosageForm : 'Medicine matched from local RPL database';
-    parsed.activeIngredient = record.activeSubstance.length > 0 ? record.activeSubstance : record.commonName;
+    parsed.subtitle = '';
+    parsed.activeIngredient = this.cleanActiveIngredient(record.activeSubstance.length > 0 ? record.activeSubstance :
+      record.commonName);
     parsed.ingredientNote = 'Official RPL common name: ' + record.commonName;
     parsed.leafletUrl = record.leafletUrl;
     parsed.characteristicUrl = record.characteristicUrl;
@@ -3183,13 +3694,13 @@ struct Index {
     parsed.matchedPackage = record.packageInfo;
     parsed.sourceNote = 'Source: local MediClear RDB match. RPL identifier: ' + record.rplIdentifier + '. Product endpoint id: ' + parsed.productId + '.';
     if (matchedName.indexOf('espumisan') < 0) {
-      parsed.howToTake = 'Open the official patient leaflet\nFollow the dose prescribed by your doctor or pharmacist\nDo not change dose based only on package OCR\nUse reminders only after confirming the plan';
-      parsed.contraindications = 'Check the official leaflet before use\nDo not use if allergic to ' + record.commonName;
-      parsed.avoid = 'Do not combine with other medicines without professional advice\nCheck interactions in the official characteristic PDF';
-      parsed.doctorIf = 'You are unsure about the dose\nSymptoms change or adverse reactions occur';
-      parsed.sideEffectOne = 'See official leaflet';
-      parsed.sideEffectTwo = 'Check interactions';
-      parsed.sideEffectThree = 'Ask pharmacist';
+      parsed.howToTake = '';
+      parsed.contraindications = '';
+      parsed.avoid = '';
+      parsed.doctorIf = '';
+      parsed.sideEffectOne = '';
+      parsed.sideEffectTwo = '';
+      parsed.sideEffectThree = '';
       parsed.reminderOneLabel = 'After plan confirmation';
       parsed.reminderTwoLabel = 'After plan confirmation';
     }
