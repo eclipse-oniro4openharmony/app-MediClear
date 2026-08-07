@@ -128,29 +128,58 @@ class ReminderStorageRecord {
   }
 }
 
+class ReminderCalendarDay {
+  key: string;
+  day: string;
+  inMonth: boolean;
+  hasReminder: boolean;
+  selected: boolean;
+  today: boolean;
+
+  constructor(key: string, day: string, inMonth: boolean, hasReminder: boolean, selected: boolean,
+    today: boolean = false) {
+    this.key = key;
+    this.day = day;
+    this.inMonth = inMonth;
+    this.hasReminder = hasReminder;
+    this.selected = selected;
+    this.today = today;
+  }
+}
+
+class ReminderCalendarWeek {
+  key: string;
+  days: ReminderCalendarDay[];
+
+  constructor(key: string, days: ReminderCalendarDay[]) {
+    this.key = key;
+    this.days = days;
+  }
+}
+
 class ParsedMedicineGuide {
-  name: string = 'Espumisan';
-  subtitle: string = 'Anti-flatulence medicine';
-  activeIngredient: string = 'Simeticonum 40 mg';
-  ingredientNote: string = 'Each capsule contains 40 mg simethicone';
-  howToTake: string = '2 capsules each time\n3-4 times per day\nBefore, during, or after meals\nCan be taken before sleep if needed';
-  contraindications: string = 'Allergic to simethicone\nAllergic to E110, E218, or any excipient';
-  avoid: string = 'Consult a clinician if abdominal symptoms are new or persistent\nCheck excipients if you have allergy history';
-  doctorIf: string = 'New or persistent abdominal discomfort\nSuspected allergic reaction';
-  sideEffectOne: string = 'No known Espumisan-specific adverse reactions';
-  sideEffectTwo: string = 'E110 may cause allergic reactions';
-  sideEffectThree: string = 'E218 may cause delayed allergic reactions';
-  reminderOneTime: string = '08:30';
-  reminderOneLabel: string = 'With breakfast';
-  reminderTwoTime: string = '19:30';
-  reminderTwoLabel: string = 'With dinner';
-  leafletUrl: string = 'https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/2268/leaflet';
-  characteristicUrl: string = 'https://rejestry.ezdrowie.gov.pl/api/rpl/medicinal-products/2268/characteristic';
-  rplIdentifier: string = '100022688';
-  productId: string = '2268';
-  matchedKeywords: string = 'espumisan, simeticonum, 40 mg';
-  matchedPackage: string = 'GTIN: 05909990168712 | OTC | Package: 25 capsules';
-  sourceNote: string = 'Source: local RPL SQLite match, Espumisan 40 mg capsules';
+  name: string = '';
+  subtitle: string = '';
+  activeIngredient: string = '';
+  ingredientNote: string = '';
+  howToTake: string = '';
+  contraindications: string = '';
+  avoid: string = '';
+  doctorIf: string = '';
+  sideEffectOne: string = '';
+  sideEffectTwo: string = '';
+  sideEffectThree: string = '';
+  reminderOneTime: string = '';
+  reminderOneLabel: string = '';
+  reminderTwoTime: string = '';
+  reminderTwoLabel: string = '';
+  leafletUrl: string = '';
+  characteristicUrl: string = '';
+  rplIdentifier: string = '';
+  productId: string = '';
+  matchedKeywords: string = '';
+  matchedPackage: string = '';
+  sourceNote: string = '';
 }
 
 class MedicineChatMessage {
@@ -177,27 +206,27 @@ struct Index {
   @State activeUploadPurpose: string = 'guide';
   @State selectedGuideUri: string = '';
   @State extractedOcrText: string = '';
-  @State medicineName: string = 'Ibuprofen 200 mg';
-  @State medicineSubtitle: string = 'Pain reliever / Fever reducer';
-  @State activeIngredient: string = 'Ibuprofen 200 mg';
-  @State ingredientNote: string = 'Nonsteroidal anti-inflammatory drug (NSAID)';
-  @State howToTake: string = '1 tablet each time\nEvery 6-8 hours\nTake after meals\nMax 3 tablets in 24 hours';
-  @State contraindications: string = 'Allergic to ibuprofen\nUnder 12 years old';
-  @State avoidWarnings: string = 'Avoid alcohol\nDo not combine with similar medicine';
-  @State doctorWarnings: string = 'Symptoms last more than 3 days\nSevere allergic reaction';
-  @State sideEffectOne: string = 'Nausea';
-  @State sideEffectTwo: string = 'Dizziness';
-  @State sideEffectThree: string = 'Stomach discomfort';
-  @State reminderOneTime: string = '08:30';
-  @State reminderOneLabel: string = 'After breakfast';
-  @State reminderOneDose: string = '1 tablet';
-  @State reminderTwoTime: string = '19:30';
-  @State reminderTwoLabel: string = 'After dinner';
-  @State reminderTwoDose: string = '1 tablet';
+  @State medicineName: string = '';
+  @State medicineSubtitle: string = '';
+  @State activeIngredient: string = '';
+  @State ingredientNote: string = '';
+  @State howToTake: string = '';
+  @State contraindications: string = '';
+  @State avoidWarnings: string = '';
+  @State doctorWarnings: string = '';
+  @State sideEffectOne: string = '';
+  @State sideEffectTwo: string = '';
+  @State sideEffectThree: string = '';
+  @State reminderOneTime: string = '';
+  @State reminderOneLabel: string = '';
+  @State reminderOneDose: string = '';
+  @State reminderTwoTime: string = '';
+  @State reminderTwoLabel: string = '';
+  @State reminderTwoDose: string = '';
   @State reminderPlanStatus: string = 'Upload a medicine guide to generate reminders.';
   @State reminderPlanWarning: string = '';
   @State reminderAlarmStatus: string = 'No reminder plan set yet.';
-  @State sourceNote: string = 'Source: demo medicine guide';
+  @State sourceNote: string = '';
   @State leafletUrl: string = '';
   @State characteristicUrl: string = '';
   @State rplIdentifier: string = '';
@@ -218,6 +247,13 @@ struct Index {
   @State basicSpecialStatus: string = '';
   @State basicCustomAllergy: string = '';
   @State reminderPlanItems: ReminderItem[] = [];
+  @State selectedReminderDate: string = '';
+  @State selectedReminderDayItems: ReminderItem[] = [];
+  @State reminderSummaryExpanded: boolean = false;
+  @State currentReminderYear: number = 0;
+  @State currentReminderMonth: number = 0;
+  @State reminderCalendarData: ReminderCalendarDay[] = [];
+  @State reminderCalendarWeeks: ReminderCalendarWeek[] = [];
   @State pendingReminderPlanItems: ReminderItem[] = [];
   @State pendingReminderPlanSummary: string = '';
   @State pendingReminderPlanWarning: string = '';
@@ -268,7 +304,7 @@ struct Index {
 
   private reminders: ReminderItem[] = [
     new ReminderItem('08:30', 'After breakfast', '1 tablet', $r('app.media.bi_sun'), '#009F9A', '#E7FAF6'),
-    new ReminderItem('19:30', 'After dinner', '1 tablet', $r('app.media.bi_moon_stars'), '#5648D9', '#F0EEFF')
+    new ReminderItem('19:30', 'After dinner', '1 tablet', $r('app.media.bi_bell'), '#5648D9', '#F0EEFF')
   ];
 
   private historyPreferencesName: string = 'mediclear_history';
@@ -278,6 +314,13 @@ struct Index {
   private chatMarkdownController: MarkdownController = new MarkdownController();
 
   aboutToAppear(): void {
+    const now = new Date();
+    this.currentReminderYear = now.getFullYear();
+    this.currentReminderMonth = now.getMonth() + 1;
+    if (this.selectedReminderDate.length === 0) {
+      this.selectedReminderDate = this.todayReminderDateKey();
+    }
+    this.updateReminderCalendar();
     this.chatMarkdownController
       .setTextColor('#1F2A44')
       .setTextSize(13)
@@ -800,9 +843,21 @@ struct Index {
       }
       .width('100%')
 
-      this.AnalysisFactRow('Medicine', this.displayAnalysisValue(this.medicineName))
-      this.AnalysisFactRow('Active ingredient', this.displayAnalysisValue(this.activeIngredient))
-      this.AnalysisFactRow('How to take', this.displayAnalysisValue(this.howToTake))
+      if (this.hasMedicineGuideAnalysis()) {
+        this.AnalysisFactRow('Medicine', this.displayAnalysisValue(this.medicineName))
+        this.AnalysisFactRow('Active ingredient', this.displayAnalysisValue(this.activeIngredient))
+        this.AnalysisFactRow('How to take', this.displayAnalysisValue(this.howToTake))
+      } else {
+        Text('No medicine guide analysed yet.')
+          .fontSize(13)
+          .fontColor('#536175')
+          .lineHeight(18)
+          .width('100%')
+          .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+          .backgroundColor('#F8FCFC')
+          .border({ width: 1, color: '#DCEBED' })
+          .borderRadius(10)
+      }
     }
     .padding(14)
     .backgroundColor(Color.White)
@@ -1040,15 +1095,16 @@ struct Index {
   ReminderView() {
     Column({ space: 16 }) {
       this.PageTop('Medication Reminder')
-      this.ReminderPlanBanner()
-      Text('Today\'s Schedule')
+      this.ReminderCalendar()
+      this.SelectedReminderDateSummary()
+      Text('Schedule for ' + this.currentSelectedReminderDate())
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
         .fontColor('#111827')
         .width('100%')
 
-      if (this.reminderPlanItems.length > 0) {
-        ForEach(this.reminderPlanItems, (item: ReminderItem) => {
+      if (this.selectedReminderDayItems.length > 0) {
+        ForEach(this.selectedReminderDayItems, (item: ReminderItem) => {
           this.ReminderCard(item)
         }, (item: ReminderItem, index: number) => item.time + '-' + index.toString())
       } else {
@@ -1070,45 +1126,58 @@ struct Index {
           }
         })
 
-      this.AdherenceCard()
     }
     .width('100%')
   }
 
   @Builder
-  ReminderPlanBanner() {
-    Column({ space: 6 }) {
-      Row({ space: 10 }) {
-        this.IconBubble($r('app.media.bi_bell'), '#E8F8F6', '#008A88')
-        Column({ space: 4 }) {
-          Text('Auto reminder plan')
-            .fontSize(16)
+  ReminderCalendar() {
+    Column({ space: 12 }) {
+      Row() {
+        this.CalendarArrowButton('left')
+        Text(this.reminderCalendarTitle())
+          .fontSize(17)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
+          .textAlign(TextAlign.Center)
+          .layoutWeight(1)
+        this.CalendarArrowButton('right')
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+
+      Row() {
+        ForEach(this.reminderWeekdayLabels(), (label: string) => {
+          Text(label)
+            .fontSize(11)
             .fontWeight(FontWeight.Bold)
-            .fontColor('#111827')
-            .width('100%')
-          Text(this.reminderPlanStatus)
-            .fontSize(13)
-            .fontColor('#42566F')
-            .lineHeight(18)
-            .width('100%')
-        }
-        .layoutWeight(1)
+            .fontColor('#7A8797')
+            .textAlign(TextAlign.Center)
+            .layoutWeight(1)
+        }, (label: string) => label)
       }
-      if (this.reminderPlanWarning.length > 0) {
-        Text(this.reminderPlanWarning)
-          .fontSize(12)
-          .fontColor('#8A5A00')
-          .lineHeight(17)
+      .width('100%')
+
+      Column({ space: 8 }) {
+        ForEach(this.reminderCalendarWeeks, (week: ReminderCalendarWeek) => {
+          Row({ space: 8 }) {
+            ForEach(week.days, (day: ReminderCalendarDay) => {
+              Column() {
+                this.ReminderCalendarDateCell(day)
+              }
+              .layoutWeight(1)
+              .onClick(() => {
+                if (day.inMonth) {
+                  this.selectReminderDate(day.key);
+                }
+              })
+            }, (day: ReminderCalendarDay) => day.key + '-' + (day.selected ? 'selected' : 'normal'))
+          }
           .width('100%')
-          .padding({ left: 10, right: 10, top: 8, bottom: 8 })
-          .backgroundColor('#FFF8E6')
-          .borderRadius(8)
+          .height(42)
+        }, (week: ReminderCalendarWeek) => week.key)
       }
-      Text(this.reminderAlarmStatus)
-        .fontSize(12)
-        .fontColor(this.reminderAlarmStatus.indexOf('failed') >= 0 ? '#B45309' : '#007D83')
-        .lineHeight(17)
-        .width('100%')
+      .width('100%')
     }
     .padding(14)
     .backgroundColor(Color.White)
@@ -1118,14 +1187,185 @@ struct Index {
   }
 
   @Builder
+  CalendarArrowButton(direction: string) {
+    Stack() {
+      Image($r('app.media.bi_chevron_right'))
+        .width(20)
+        .height(20)
+        .fillColor('#263244')
+        .rotate({ angle: direction === 'left' ? 180 : 0 })
+    }
+    .width(36)
+    .height(36)
+    .backgroundColor('#F6FBFC')
+    .border({ width: 1, color: '#E4EAF0' })
+    .borderRadius(8)
+    .stateStyles({
+      pressed: {
+        .opacity(0.82)
+        .scale({ x: 0.94, y: 0.94 })
+      }
+    })
+    .onClick(() => {
+      if (direction === 'left') {
+        this.prevReminderMonth();
+      } else {
+        this.nextReminderMonth();
+      }
+    })
+  }
+
+  @Builder
+  ReminderCalendarDateCell(day: ReminderCalendarDay) {
+    if (day.inMonth) {
+      Column({ space: 3 }) {
+        Text(day.day)
+          .fontSize(13)
+          .fontWeight(this.isSelectedReminderCalendarDay(day) ? FontWeight.Bold : FontWeight.Medium)
+          .fontColor(this.isSelectedReminderCalendarDay(day) ? Color.White : '#263244')
+          .textAlign(TextAlign.Center)
+          .width('100%')
+        if (day.hasReminder) {
+          Circle()
+            .width(5)
+            .height(5)
+            .fill(this.isSelectedReminderCalendarDay(day) ? Color.White : '#FBBF24')
+        } else {
+          Blank()
+            .height(5)
+        }
+      }
+      .height(42)
+      .width('100%')
+      .justifyContent(FlexAlign.Center)
+      .backgroundColor(this.isSelectedReminderCalendarDay(day) ? '#1767C5' :
+        (day.hasReminder ? '#FFF4C2' : (day.today ? '#EAF2FF' : '#F8FCFC')))
+      .border({ width: 1, color: this.isSelectedReminderCalendarDay(day) ? '#1767C5' :
+        (day.hasReminder ? '#FBBF24' : (day.today ? '#1767C5' : '#E4EAF0')) })
+      .borderRadius(10)
+      .stateStyles({
+        pressed: {
+          .opacity(0.82)
+          .scale({ x: 0.96, y: 0.96 })
+        }
+      })
+      .onClick(() => {
+        this.selectReminderDate(day.key);
+      })
+    } else {
+      Blank()
+        .height(42)
+        .width('100%')
+    }
+  }
+
+  @Builder
+  SelectedReminderDateSummary() {
+    Row({ space: 12 }) {
+      this.IconBubble($r('app.media.bi_bell'), this.selectedReminderDayItems.length > 0 ? '#FFF4C2' : '#EEF5FF',
+        this.selectedReminderDayItems.length > 0 ? '#B45309' : '#1767C5')
+      Column({ space: 8 }) {
+        Text(this.selectedReminderDayItems.length > 0 ? this.selectedReminderPlanTitle() : 'No medicine plan')
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
+          .width('100%')
+        if (this.selectedReminderDayItems.length > 0) {
+          Column({ space: 6 }) {
+            ForEach(this.visibleReminderSummaryItems(), (item: ReminderItem) => {
+              this.ReminderSummaryLine(item)
+            }, (item: ReminderItem, index: number) => item.time + '-summary-' + index.toString())
+            if (!this.reminderSummaryExpanded && this.selectedReminderDayItems.length > 3) {
+              Text('+' + (this.selectedReminderDayItems.length - 3).toString() + ' more plans below')
+                .fontSize(12)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#B45309')
+                .width('100%')
+                .padding({ top: 4, bottom: 4 })
+                .onClick(() => {
+                  this.reminderSummaryExpanded = true;
+                })
+            } else if (this.reminderSummaryExpanded && this.selectedReminderDayItems.length > 3) {
+              Text('Show less')
+                .fontSize(12)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#B45309')
+                .width('100%')
+                .padding({ top: 4, bottom: 4 })
+                .onClick(() => {
+                  this.reminderSummaryExpanded = false;
+                })
+            }
+          }
+          .width('100%')
+        } else {
+          Text(this.currentSelectedReminderDate() + ': no medicines scheduled.')
+            .fontSize(12)
+            .fontColor('#536175')
+            .lineHeight(17)
+            .width('100%')
+        }
+      }
+      .layoutWeight(1)
+    }
+    .padding(14)
+    .backgroundColor(this.selectedReminderDayItems.length > 0 ? '#FFF9E8' : '#F8FCFC')
+    .border({ width: 1, color: this.selectedReminderDayItems.length > 0 ? '#FBBF24' : '#DCEBED' })
+    .borderRadius(12)
+    .width('100%')
+    .stateStyles({
+      pressed: {
+        .opacity(0.88)
+        .scale({ x: 0.99, y: 0.99 })
+      }
+    })
+    .onClick(() => {
+      if (this.selectedReminderDayItems.length > 3) {
+        this.reminderSummaryExpanded = !this.reminderSummaryExpanded;
+      }
+    })
+  }
+
+  @Builder
+  ReminderSummaryLine(item: ReminderItem) {
+    Row({ space: 8 }) {
+      Text(item.time)
+        .fontSize(12)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#8A5A00')
+        .width(48)
+      Column({ space: 2 }) {
+        Text(this.reminderMedicineDisplayName(item))
+          .fontSize(12)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#263244')
+          .maxLines(1)
+          .width('100%')
+        Text(item.dose)
+          .fontSize(11)
+          .fontColor('#536175')
+          .maxLines(2)
+          .lineHeight(15)
+          .width('100%')
+      }
+      .layoutWeight(1)
+    }
+    .padding({ left: 10, right: 10, top: 7, bottom: 7 })
+    .backgroundColor('#FFFFFF')
+    .border({ width: 1, color: '#F4D47A' })
+    .borderRadius(8)
+    .width('100%')
+  }
+
+  @Builder
   EmptyReminderCard() {
     Column({ space: 8 }) {
       this.IconBubble($r('app.media.bi_clipboard_check'), '#EEF5FF', '#1767C5')
-      Text('No reminder schedule yet')
+      Text('No reminders for this date')
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
         .fontColor('#111827')
-      Text('Upload a medicine guide from Home. MediClear will read the leaflet usage section and suggest reminder times.')
+      Text('Choose a highlighted date to view the medicines scheduled for that day.')
         .fontSize(13)
         .fontColor('#536175')
         .lineHeight(18)
@@ -1884,127 +2124,74 @@ struct Index {
 
   @Builder
   ReminderCard(item: ReminderItem) {
-    Column({ space: 14 }) {
-      Row({ space: 14 }) {
-        this.IconBubble(item.icon, item.background, item.tint)
-        Column({ space: 4 }) {
-          if (item.medicineName.length > 0) {
-            Text(item.medicineName)
-              .fontSize(16)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#111827')
-              .maxLines(2)
-          }
-          Text(item.time)
-            .fontSize(28)
+    Row({ space: 14 }) {
+      Column({ space: 4 }) {
+        Text(item.time)
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
+      }
+      .width(74)
+      .height(76)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      .backgroundColor(item.background)
+      .border({ width: 1, color: item.tint })
+      .borderRadius(12)
+
+      Column({ space: 7 }) {
+        Row() {
+          Text(this.reminderMedicineDisplayName(item))
+            .fontSize(16)
             .fontWeight(FontWeight.Bold)
             .fontColor('#111827')
-          Text(item.label)
-            .fontSize(14)
-            .fontColor('#344155')
-          Text(item.dose)
-            .fontSize(13)
-            .fontColor('#344155')
-            .lineHeight(18)
-          Text(item.source)
-            .fontSize(11)
-            .fontColor('#64748B')
-            .lineHeight(16)
-          if (item.durationLabel.length > 0) {
-            Text(item.durationLabel)
-              .fontSize(11)
-              .fontColor('#007D83')
-              .lineHeight(16)
+            .maxLines(2)
+            .layoutWeight(1)
+          Stack() {
+            Image(item.icon)
+              .width(16)
+              .height(16)
+              .fillColor(item.tint)
           }
-          if (item.startDate.length > 0 && item.endDate.length > 0) {
-            Text(item.startDate + ' - ' + item.endDate)
-              .fontSize(11)
-              .fontColor('#64748B')
-              .lineHeight(16)
-          }
+          .width(30)
+          .height(30)
+          .backgroundColor('#F8FCFC')
+          .border({ width: 1, color: '#E4EAF0' })
+          .borderRadius(15)
         }
-        .layoutWeight(1)
-        Text(item.dose)
-          .fontSize(12)
-          .fontColor('#344155')
-          .padding({ left: 12, right: 12, top: 6, bottom: 6 })
-          .backgroundColor('#EDF8F7')
-          .borderRadius(16)
-      }
-      Row({ space: 12 }) {
-        Button('Mark as Taken')
-          .fontSize(14)
-          .fontColor(Color.White)
-          .backgroundColor('#009F9A')
-          .borderRadius(8)
-          .height(44)
-          .layoutWeight(1)
-          .stateStyles({
-            pressed: {
-              .opacity(0.82)
-              .scale({ x: 0.98, y: 0.98 })
-            }
-          })
-        Button('Skip')
-          .fontSize(14)
-          .fontColor('#111827')
-          .backgroundColor('#FFFFFF')
-          .border({ width: 1, color: '#D6DEE8' })
-          .borderRadius(8)
-          .height(44)
-          .layoutWeight(1)
-          .stateStyles({
-            pressed: {
-              .opacity(0.82)
-              .scale({ x: 0.98, y: 0.98 })
-            }
-          })
-      }
-    }
-    .padding(16)
-    .backgroundColor(Color.White)
-    .borderRadius(12)
-    .shadow({ radius: 10, color: '#12006472', offsetY: 4 })
-  }
-
-  @Builder
-  AdherenceCard() {
-    Column({ space: 14 }) {
-      Row() {
-        Text('Adherence - Last 7 Days')
-          .fontSize(16)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#111827')
-          .layoutWeight(1)
-        Text('100%')
-          .fontSize(18)
-          .fontWeight(FontWeight.Bold)
-          .fontColor('#009F7A')
-      }
-      Text('Great job! Keep it up.')
-        .fontSize(12)
-        .fontColor('#536175')
         .width('100%')
-      Row() {
-        ForEach(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], (day: string) => {
-          Column({ space: 6 }) {
-            Text(day)
-              .fontSize(11)
-              .fontColor('#536175')
-            Image($r('app.media.bi_check_circle_fill'))
-              .width(22)
-              .height(22)
-              .fillColor('#0EA77B')
-              .width(22)
-              .height(22)
+        Text(item.dose)
+          .fontSize(13)
+          .fontColor('#263244')
+          .lineHeight(18)
+          .width('100%')
+        Text(item.source)
+          .fontSize(11)
+          .fontColor('#8A98A8')
+          .maxLines(1)
+          .width('100%')
+        if (item.durationLabel.length > 0 || (item.startDate.length > 0 && item.endDate.length > 0)) {
+          Row({ space: 8 }) {
+            if (item.startDate.length > 0 && item.endDate.length > 0) {
+              Text(item.startDate + ' - ' + item.endDate)
+                .fontSize(11)
+                .fontColor('#007D83')
+                .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+                .backgroundColor('#E8F8F6')
+                .borderRadius(8)
+            }
+            if (item.durationLabel.length > 0) {
+              Text(item.durationLabel)
+                .fontSize(11)
+                .fontColor('#64748B')
+                .maxLines(1)
+                .layoutWeight(1)
+            }
           }
-          .layoutWeight(1)
-        }, (day: string) => day)
+          .width('100%')
+        }
       }
-      .width('100%')
-      Text('7 / 7 taken on time')
-        .fontSize(13)
-        .fontColor('#344155')
+      .layoutWeight(1)
     }
     .padding(16)
     .backgroundColor(Color.White)
@@ -3044,6 +3231,7 @@ struct Index {
       }
 
       this.reminderPlanItems = records;
+      this.updateReminderCalendar();
       if (records.length > 0) {
         this.setInAppMedicineReminders('Loaded saved reminder schedule.');
       }
@@ -3172,6 +3360,12 @@ struct Index {
   private displayAnalysisValue(value: string): string {
     const clean = value.trim();
     return clean.length > 0 ? clean : '-';
+  }
+
+  private hasMedicineGuideAnalysis(): boolean {
+    return this.medicineName.trim().length > 0 ||
+      this.activeIngredient.trim().length > 0 ||
+      this.howToTake.trim().length > 0;
   }
 
   private isLegacyHistoryPlaceholder(value: string): boolean {
@@ -3373,6 +3567,249 @@ struct Index {
     return hours + ':' + minutes;
   }
 
+  private reminderWeekdayLabels(): string[] {
+    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  }
+
+  private reminderCalendarTitle(): string {
+    const monthNames: string[] = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+      'September', 'October', 'November', 'December'];
+    if (this.currentReminderMonth < 1 || this.currentReminderMonth > 12) {
+      return '';
+    }
+    return monthNames[this.currentReminderMonth - 1] + ' ' + this.currentReminderYear.toString();
+  }
+
+  private prevReminderMonth(): void {
+    if (this.currentReminderMonth === 1) {
+      this.currentReminderYear -= 1;
+      this.currentReminderMonth = 12;
+    } else {
+      this.currentReminderMonth -= 1;
+    }
+    this.selectedReminderDate = this.formatReminderDate(new Date(this.currentReminderYear,
+      this.currentReminderMonth - 1, 1));
+    this.updateReminderCalendar();
+  }
+
+  private nextReminderMonth(): void {
+    if (this.currentReminderMonth === 12) {
+      this.currentReminderYear += 1;
+      this.currentReminderMonth = 1;
+    } else {
+      this.currentReminderMonth += 1;
+    }
+    this.selectedReminderDate = this.formatReminderDate(new Date(this.currentReminderYear,
+      this.currentReminderMonth - 1, 1));
+    this.updateReminderCalendar();
+  }
+
+  private selectReminderDate(dateKey: string): void {
+    this.selectedReminderDate = dateKey;
+    this.selectedReminderDayItems = this.reminderItemsForDate(dateKey);
+    this.reminderSummaryExpanded = false;
+    this.updateReminderCalendar();
+  }
+
+  private isSelectedReminderCalendarDay(day: ReminderCalendarDay): boolean {
+    return day.inMonth && day.key === this.currentSelectedReminderDate();
+  }
+
+  private updateReminderCalendar(): void {
+    if (this.currentReminderYear === 0 || this.currentReminderMonth === 0) {
+      const now = new Date();
+      this.currentReminderYear = now.getFullYear();
+      this.currentReminderMonth = now.getMonth() + 1;
+    }
+
+    const firstDay = new Date(this.currentReminderYear, this.currentReminderMonth - 1, 1).getDay();
+    const daysInMonth = new Date(this.currentReminderYear, this.currentReminderMonth, 0).getDate();
+    const calendar: ReminderCalendarDay[] = [];
+    const selected = this.currentSelectedReminderDate();
+    const today = new Date();
+
+    for (let index = 0; index < firstDay; index++) {
+      calendar.push(new ReminderCalendarDay('blank-' + index.toString(), '', false, false, false));
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(this.currentReminderYear, this.currentReminderMonth - 1, day);
+      const key = this.formatReminderDate(date);
+      const isToday = day === today.getDate() &&
+        this.currentReminderMonth === today.getMonth() + 1 &&
+        this.currentReminderYear === today.getFullYear();
+      calendar.push(new ReminderCalendarDay(
+        key,
+        day.toString(),
+        true,
+        this.hasReminderOnDate(key),
+        key === selected,
+        isToday
+      ));
+    }
+
+    const targetCellCount = 42;
+    const currentCount = calendar.length;
+    for (let index = currentCount; index < targetCellCount; index++) {
+      calendar.push(new ReminderCalendarDay('blank-tail-' + index.toString(), '', false, false, false));
+    }
+
+    const weeks: ReminderCalendarWeek[] = [];
+    for (let weekIndex = 0; weekIndex < 6; weekIndex++) {
+      const weekDays: ReminderCalendarDay[] = [];
+      for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+        weekDays.push(calendar[weekIndex * 7 + dayIndex]);
+      }
+      weeks.push(new ReminderCalendarWeek('week-' + weekIndex.toString(), weekDays));
+    }
+
+    this.reminderCalendarData = calendar;
+    this.reminderCalendarWeeks = weeks;
+    this.selectedReminderDayItems = this.reminderItemsForDate(this.currentSelectedReminderDate());
+  }
+
+  private currentSelectedReminderDate(): string {
+    if (this.selectedReminderDate.length > 0) {
+      return this.selectedReminderDate;
+    }
+    return this.todayReminderDateKey();
+  }
+
+  private todayReminderDateKey(): string {
+    return this.formatReminderDate(new Date());
+  }
+
+  private hasReminderOnDate(dateKey: string): boolean {
+    for (let index = 0; index < this.reminderPlanItems.length; index++) {
+      if (this.isReminderActiveOnDate(this.reminderPlanItems[index], dateKey)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private reminderItemsForDate(dateKey: string): ReminderItem[] {
+    const items: ReminderItem[] = [];
+    for (let index = 0; index < this.reminderPlanItems.length; index++) {
+      const item = this.reminderPlanItems[index];
+      if (this.isReminderActiveOnDate(item, dateKey)) {
+        items.push(item);
+      }
+    }
+    return this.sortedReminderItemsByTime(items);
+  }
+
+  private sortedReminderItemsByTime(items: ReminderItem[]): ReminderItem[] {
+    const sortedItems: ReminderItem[] = [];
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index];
+      const itemMinutes = this.reminderTimeMinutes(item.time);
+      let inserted = false;
+      for (let position = 0; position < sortedItems.length; position++) {
+        if (itemMinutes < this.reminderTimeMinutes(sortedItems[position].time)) {
+          sortedItems.splice(position, 0, item);
+          inserted = true;
+          break;
+        }
+      }
+      if (!inserted) {
+        sortedItems.push(item);
+      }
+    }
+    return sortedItems;
+  }
+
+  private reminderTimeMinutes(value: string): number {
+    const parts = value.split(':');
+    if (parts.length < 2) {
+      return 99999;
+    }
+    const hour = Number.parseInt(parts[0], 10);
+    const minute = Number.parseInt(parts[1], 10);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+      return 99999;
+    }
+    return hour * 60 + minute;
+  }
+
+  private selectedReminderPlanTitle(): string {
+    return this.currentSelectedReminderDate() + ' · ' + this.selectedReminderDayItems.length.toString() +
+      (this.selectedReminderDayItems.length === 1 ? ' plan' : ' plans');
+  }
+
+  private visibleReminderSummaryItems(): ReminderItem[] {
+    if (this.reminderSummaryExpanded) {
+      return this.selectedReminderDayItems;
+    }
+
+    const preview: ReminderItem[] = [];
+    const maxCount = this.selectedReminderDayItems.length > 3 ? 3 : this.selectedReminderDayItems.length;
+    for (let index = 0; index < maxCount; index++) {
+      preview.push(this.selectedReminderDayItems[index]);
+    }
+    return preview;
+  }
+
+  private reminderMedicineDisplayName(item: ReminderItem): string {
+    const name = item.medicineName.trim();
+    if (name.length > 0) {
+      return name;
+    }
+    return 'Medicine';
+  }
+
+  private isReminderActiveOnDate(item: ReminderItem, dateKey: string): boolean {
+    const start = item.startDate.trim();
+    const end = item.endDate.trim();
+    if (start.length === 0 && end.length === 0) {
+      return dateKey === this.todayReminderDateKey();
+    }
+
+    const startKey = start.length > 0 ? start : this.todayReminderDateKey();
+    let endKey = end;
+    if (endKey.length === 0) {
+      endKey = this.formatReminderDate(this.addDays(this.reminderDateFromKey(startKey), item.durationDays - 1));
+    }
+    return this.isReminderDateWithinRange(dateKey, startKey, endKey);
+  }
+
+  private isReminderDateWithinRange(dateKey: string, startKey: string, endKey: string): boolean {
+    const dateValue = this.reminderDateOrdinal(dateKey);
+    const startValue = this.reminderDateOrdinal(startKey);
+    const endValue = this.reminderDateOrdinal(endKey);
+    if (startValue <= endValue) {
+      return dateValue >= startValue && dateValue <= endValue;
+    }
+    return dateValue >= startValue || dateValue <= endValue;
+  }
+
+  private reminderDateOrdinal(dateKey: string): number {
+    const parts = dateKey.split('/');
+    if (parts.length < 2) {
+      return 0;
+    }
+    const month = Number.parseInt(parts[0], 10);
+    const day = Number.parseInt(parts[1], 10);
+    if (!Number.isFinite(month) || !Number.isFinite(day)) {
+      return 0;
+    }
+    return month * 100 + day;
+  }
+
+  private reminderDateFromKey(dateKey: string): Date {
+    const parts = dateKey.split('/');
+    const now = new Date();
+    if (parts.length < 2) {
+      return now;
+    }
+    const month = Number.parseInt(parts[0], 10);
+    const day = Number.parseInt(parts[1], 10);
+    if (!Number.isFinite(month) || !Number.isFinite(day)) {
+      return now;
+    }
+    return new Date(now.getFullYear(), month - 1, day);
+  }
+
   private stageReminderPlanForConfirmation(plan: BackendReminderPlanResponse): void {
     this.reminderPlanStatus = plan.summary.length > 0 ? plan.summary : 'Reminder plan generated from official leaflet.';
     this.reminderPlanWarning = plan.warning;
@@ -3382,6 +3819,7 @@ struct Index {
     const durationDays = this.reminderDurationDays(this.pendingReminderPlanDuration);
     const startDate = this.formatReminderDate(new Date());
     const endDate = this.formatReminderDate(this.addDays(new Date(), durationDays - 1));
+    this.selectedReminderDate = startDate;
 
     if (plan.status === 'blocked') {
       this.pendingReminderPlanItems = [];
@@ -3459,13 +3897,13 @@ struct Index {
     }
     this.reminderPlanItems = this.reminderPlanItems.concat(addedItems);
     this.saveMedicineReminders();
+    this.updateReminderCalendar();
     this.showReminderConfirmDialog = false;
     this.setInAppMedicineReminders('Reminder plan added to MediClear.');
     this.pendingReminderPlanItems = [];
     this.pendingReminderPlanSummary = '';
     this.pendingReminderPlanWarning = '';
     this.pendingReminderPlanDuration = '';
-    this.currentTab = 2;
     promptAction.showToast({
       message: 'Reminder added successfully!',
       duration: 2200
@@ -3601,7 +4039,7 @@ struct Index {
       return $r('app.media.bi_clock_history');
     }
     if (index === 2) {
-      return $r('app.media.bi_moon_stars');
+      return $r('app.media.bi_bell');
     }
     return $r('app.media.bi_bell');
   }
