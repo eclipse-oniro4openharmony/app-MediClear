@@ -2148,10 +2148,10 @@ struct Index {
             .maxLines(2)
             .layoutWeight(1)
           Stack() {
-            Image(item.icon)
+            Image($r('app.media.bi_bell'))
               .width(16)
               .height(16)
-              .fillColor(item.tint)
+              .fillColor('#009F9A')
           }
           .width(30)
           .height(30)
@@ -2170,23 +2170,14 @@ struct Index {
           .fontColor('#8A98A8')
           .maxLines(1)
           .width('100%')
-        if (item.durationLabel.length > 0 || (item.startDate.length > 0 && item.endDate.length > 0)) {
+        if (item.startDate.length > 0 && item.endDate.length > 0) {
           Row({ space: 8 }) {
-            if (item.startDate.length > 0 && item.endDate.length > 0) {
-              Text(item.startDate + ' - ' + item.endDate)
-                .fontSize(11)
-                .fontColor('#007D83')
-                .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-                .backgroundColor('#E8F8F6')
-                .borderRadius(8)
-            }
-            if (item.durationLabel.length > 0) {
-              Text(item.durationLabel)
-                .fontSize(11)
-                .fontColor('#64748B')
-                .maxLines(1)
-                .layoutWeight(1)
-            }
+            Text(item.startDate + ' - ' + item.endDate)
+              .fontSize(11)
+              .fontColor('#007D83')
+              .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+              .backgroundColor('#E8F8F6')
+              .borderRadius(8)
           }
           .width('100%')
         }
