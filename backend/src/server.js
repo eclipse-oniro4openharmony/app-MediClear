@@ -112,7 +112,10 @@ app.post('/api/documents/extract-url', async (request, response, next) => {
 
 app.get('/api/documents/by-product/:productId', async (request, response, next) => {
   try {
-    const document = await getLatestDocumentByProductId(request.params.productId);
+    const documentType = typeof request.query.documentType === 'string' ? request.query.documentType : '';
+    const document = documentType.length > 0
+      ? await getLatestDocumentByProductIdAndType(request.params.productId, documentType)
+      : await getLatestDocumentByProductId(request.params.productId);
     if (!document) {
       response.status(404).json({ error: 'Document not found' });
       return;
@@ -131,6 +134,22 @@ app.get('/api/documents/:id/chunks', async (request, response, next) => {
       documentId,
       chunks: await getChunks(documentId)
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/documents/:id/facts', async (request, response, next) => {
+  try {
+    const documentId = Number.parseInt(request.params.id, 10);
+    const document = await getDocument(documentId);
+    if (!document) {
+      response.status(404).json({ error: 'Document not found' });
+      return;
+    }
+
+    const chunks = await getChunks(documentId);
+    response.json(buildMedicineFacts(document, chunks));
   } catch (error) {
     next(error);
   }
@@ -330,6 +349,7 @@ function formatExtractedFactValue(value) {
     .replace(/tabletki|tabletek/gi, 'tablets')
     .replace(/co odpowiada/gi, 'equivalent to')
     .replace(/symetykonu/gi, 'simethicone')
+    .replace(/raz\s+na\s+dobę/gi, 'once daily')
     .replace(/razy na dobę/gi, 'times daily')
     .replace(/(\d+)\s+do\s+(\d+)\s+times daily/gi, '$1 to $2 times daily')
     .replace(/bezpośrednio przed,\s*w trakcie lub po posiłkach/gi, 'immediately before, during, or after meals')
@@ -382,6 +402,7 @@ function buildReminderPlan(input) {
       dose: 'Not set',
       frequency: 'Not set',
       timing: 'Not set',
+      duration: 'Not set',
       warning: safetyAssessment.warning,
       reminders: []
     };
@@ -396,6 +417,7 @@ function buildReminderPlan(input) {
       dose: 'Not found in the provided leaflet context',
       frequency: 'Not found in the provided leaflet context',
       timing: 'Not found in the provided leaflet context',
+      duration: 'Not found in the provided leaflet context',
       warning: combineReminderMessages([
         safetyAssessment.warning,
         'No automatic reminders were created because the leaflet usage plan was not clear.'
@@ -433,7 +455,7 @@ function buildReminderPlan(input) {
   const displayDose = conciseFact(dose);
   const displayFrequency = conciseFact(frequency);
   const displayTiming = conciseFact(timing);
-  const displayDuration = conciseFact(duration);
+  const displayDuration = normalizeReminderDuration(conciseFact(duration));
 
   if (displayDose.indexOf('Not found') >= 0 || displayFrequency.indexOf('Not found') >= 0) {
     return {
@@ -444,6 +466,7 @@ function buildReminderPlan(input) {
       dose: displayDose,
       frequency: displayFrequency,
       timing: displayTiming,
+      duration: displayDuration,
       warning: combineReminderMessages([
         safetyAssessment.warning,
         'No automatic reminders were created. Confirm the dose and timing with a doctor or pharmacist.'
@@ -468,6 +491,7 @@ function buildReminderPlan(input) {
     dose: displayDose,
     frequency: displayFrequency,
     timing: displayTiming,
+    duration: displayDuration,
     warning,
     reminders
   };
@@ -520,6 +544,250 @@ function buildReminderSafetyAssessment(chunks, patientContext) {
     summary: cautions.length > 0 ? cautions[0] : 'No obvious safety block found in the leaflet excerpts used for reminders.',
     warning
   };
+}
+
+function buildMedicineFacts(document, chunks) {
+  const allText = chunks
+    .map((chunk) => chunk.chunk_text)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const howToTakeText = chunks
+    .filter((chunk) => chunk.section_type === 'how_to_take')
+    .map((chunk) => chunk.chunk_text)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const beforeUseText = chunks
+    .filter((chunk) => chunk.section_type === 'before_use')
+    .map((chunk) => chunk.chunk_text)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const contentsText = chunks
+    .filter((chunk) => chunk.section_type === 'contents' || chunk.section_type === 'what_is_it')
+    .map((chunk) => chunk.chunk_text)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return {
+    documentId: document.id,
+    medicineName: document.medicine_name,
+    activeIngredient: extractActiveIngredient(contentsText.length > 0 ? contentsText : allText),
+    howToTake: extractHowToTakeForDetails(howToTakeText),
+    contraindications: extractContraindicationDetails(beforeUseText.length > 0 ? beforeUseText : allText),
+    warnings: extractWarningDetails(beforeUseText),
+    source: 'Official leaflet knowledge base'
+  };
+}
+
+function extractActiveIngredient(text) {
+  const value = firstMatch(text, [
+    /(?:active substance(?:s)?(?: is| are)?|active ingredient(?:s)?(?: is| are)?)[\s:.-]+([^.;]{3,180})/i,
+    /(?:substancją czynną(?: leku)? jest|substancje czynne(?: leku)? to|substancja czynna(?: leku)? to)[\s:.-]+([^.;]{3,180})/i,
+    /(?:każda tabletka|jedna tabletka|each tablet)[^.]{0,120}(?:zawiera|contains)\s+([^.;]{3,180})/i
+  ]);
+  if (value.length === 0) {
+    return 'Not found in the official leaflet context';
+  }
+  return translateLeafletExcerptToEnglish(value);
+}
+
+function extractHowToTakeForDetails(text) {
+  if (text.length === 0) {
+    return 'Not found in the official leaflet context';
+  }
+
+  const dose = firstMatch(text, [
+    /((?:jedna|jeden|1)\s+tabletka\s+\d+\s*mg)/i,
+    /((?:dwie|dwa|2)\s+tabletki\s+\d*\s*mg?)/i,
+    /(\d+\s*(?:do|-|–)?\s*\d*\s*(?:kapsułki|kapsułek|tabletki|tabletek|tablet|capsules?|drops?|ml)(?:\s*\([^)]*\))?)/i,
+    /(?:recommended dose|dose)[^.:;]*[:.]?\s*([^.;]{0,120}(?:capsules?|tablets?|drops?|ml)[^.;]{0,120})/i
+  ]);
+  const frequency = firstMatch(text, [
+    /(raz\s+na\s+dobę)/i,
+    /(once\s+(?:daily|a day|per day))/i,
+    /(\d+\s*(?:do|-|–)?\s*\d+\s*razy\s+na\s+dobę)/i,
+    /(\d+\s*(?:to|-|–)?\s*\d+\s*times\s+(?:a|per)\s+day)/i,
+    /(every\s+\d+\s*(?:-|–|to)?\s*\d*\s*hours?)/i
+  ]);
+  const timing = firstMatch(text, [
+    /(rano)/i,
+    /(bezpośrednio przed,\s*w trakcie lub po posiłkach[^.]*\.?)/i,
+    /(before,\s*during,?\s*or after meals[^.]*\.?)/i,
+    /(with meals[^.]*\.?)/i,
+    /(after meals[^.]*\.?)/i,
+    /(before meals[^.]*\.?)/i
+  ]);
+  const duration = firstMatch(text, [
+    /(należy przyjmować tak długo jak występują dolegliwości[^.]*\.?)/i,
+    /(take[^.]{0,80}as long as symptoms[^.]*\.?)/i
+  ]);
+
+  const facts = [
+    `Dose: ${conciseFact(dose)}`,
+    `Frequency: ${conciseFact(frequency)}`,
+    `Timing: ${conciseFact(timing)}`,
+    `Duration: ${conciseFact(duration)}`
+  ];
+  return facts.join('\n');
+}
+
+function extractContraindicationDetails(text) {
+  if (text.length === 0) {
+    return 'Not found in the official leaflet context';
+  }
+
+  const facts = extractContraindicationFacts(text);
+  if (facts.length > 0) {
+    return facts.join('\n');
+  }
+
+  const passage = extractBestSectionPassage(text, [
+    'Kiedy nie stosować', 'Do not take', 'Do not use', 'When not to use', 'Contraindications'
+  ], [
+    'Ostrzeżenia', 'Warnings', 'Przed rozpoczęciem', 'Before taking', 'Kiedy zachować'
+  ], [
+    'uczulenie', 'allergic', 'hypersensitivity'
+  ], 1000);
+  if (passage.length === 0) {
+    const allergy = firstMatch(text, [
+      /([^.;]{0,140}(?:uczulenie|allergic|allergy|hypersensitivity)[^.;]{0,220})/i
+    ]);
+    return allergy.length > 0 ? translateLeafletExcerptToEnglish(allergy) : 'Not found in the official leaflet context';
+  }
+  return translateLeafletExcerptToEnglish(passage);
+}
+
+function extractWarningDetails(text) {
+  if (text.length === 0) {
+    return '';
+  }
+  const facts = extractWarningFacts(text);
+  if (facts.length > 0) {
+    return facts.join('\n');
+  }
+
+  const passage = extractBestSectionPassage(text, [
+    'Ostrzeżenia', 'Warnings and precautions', 'Warnings', 'Before taking'
+  ], [
+    'Inne leki', 'Other medicines', 'Ciąża', 'Pregnancy', 'Jak stosować', 'How to take'
+  ], [
+    'należy omówić', 'talk to a doctor', 'not recommended', 'nie jest zalecany', 'ryzyko'
+  ], 900);
+  return passage.length > 0 ? translateLeafletExcerptToEnglish(passage) : '';
+}
+
+function extractContraindicationFacts(text) {
+  const lower = normalizeSafetyText(text);
+  const facts = [];
+  if ((lower.includes('uczulenie') || lower.includes('allergic') || lower.includes('hypersensitivity')) &&
+    lower.includes('bupropion')) {
+    facts.push('Do not use if allergic to bupropion or any other ingredient of this medicine.');
+  }
+  if (lower.includes('inne leki zawierajace bupropion') || lower.includes('other medicines containing bupropion')) {
+    facts.push('Do not use together with other medicines containing bupropion.');
+  }
+  if (lower.includes('padaczke') || lower.includes('padaczka') || lower.includes('epilepsy') ||
+    lower.includes('seizure')) {
+    facts.push('Do not use if the patient has epilepsy or has had seizures.');
+  }
+  if (lower.includes('zaburzenia odzywiania') || lower.includes('bulimia') || lower.includes('anorexia') ||
+    lower.includes('eating disorder')) {
+    facts.push('Do not use if the patient has or has had an eating disorder such as bulimia or anorexia.');
+  }
+  if (lower.includes('inhibitory monoaminooksydazy') || lower.includes('monoamine oxidase inhibitors') ||
+    lower.includes('maoi')) {
+    facts.push('Do not use with monoamine oxidase inhibitors unless the leaflet waiting period is satisfied.');
+  }
+  if (facts.length === 0 && (lower.includes('uczulenie') || lower.includes('allergic'))) {
+    facts.push('Do not use if allergic to the active substance or any other ingredient listed in the leaflet.');
+  }
+  return uniqueStrings(facts);
+}
+
+function extractWarningFacts(text) {
+  const lower = normalizeSafetyText(text);
+  const facts = [];
+  if (lower.includes('brugadow') || lower.includes('brugada')) {
+    facts.push('Talk to a doctor or pharmacist before use if the patient has Brugada syndrome or a family history of cardiac arrest or sudden death.');
+  }
+  if (lower.includes('ponizej 18') || lower.includes('below 18') || lower.includes('under 18')) {
+    facts.push('Not recommended for patients under 18 years old.');
+  }
+  if (lower.includes('alkoholu') || lower.includes('alcohol')) {
+    facts.push('Tell the doctor before treatment if the patient regularly drinks large amounts of alcohol.');
+  }
+  if (lower.includes('cukrzyce') || lower.includes('diabetes')) {
+    facts.push('Tell the doctor before treatment if the patient has diabetes and uses insulin or oral diabetes medicines.');
+  }
+  if (lower.includes('uraz glowy') || lower.includes('head injury')) {
+    facts.push('Tell the doctor before treatment if the patient has had a serious head injury.');
+  }
+  if (lower.includes('chorobe watroby') || lower.includes('liver disease') || lower.includes('watroby')) {
+    facts.push('Tell the doctor before treatment if the patient has liver problems.');
+  }
+  if (lower.includes('chorobe nerek') || lower.includes('kidney disease') || lower.includes('nerek')) {
+    facts.push('Tell the doctor before treatment if the patient has kidney problems.');
+  }
+  return uniqueStrings(facts);
+}
+
+function uniqueStrings(values) {
+  const kept = [];
+  for (const value of values) {
+    if (value.length > 0 && !kept.includes(value)) {
+      kept.push(value);
+    }
+  }
+  return kept;
+}
+
+function extractBestSectionPassage(text, startSignals, endSignals, requiredSignals, maxLength) {
+  let searchFrom = 0;
+  const lowerText = text.toLowerCase();
+  while (searchFrom < text.length) {
+    const passage = extractSectionPassageFrom(text, startSignals, endSignals, maxLength, searchFrom);
+    if (passage.length === 0) {
+      return '';
+    }
+
+    const lowerPassage = passage.toLowerCase();
+    const looksLikeContents = lowerPassage.includes('spis treści') || lowerPassage.includes('contents') ||
+      lowerPassage.split(' ').length < 18;
+    const hasRequiredSignal = requiredSignals.some((signal) => lowerPassage.includes(signal.toLowerCase()));
+    if (!looksLikeContents && hasRequiredSignal) {
+      return passage;
+    }
+
+    const nextStart = lowerText.indexOf(lowerPassage, searchFrom);
+    searchFrom = nextStart >= 0 ? nextStart + Math.max(20, passage.length) : searchFrom + 100;
+  }
+  return '';
+}
+
+function extractSectionPassageFrom(text, startSignals, endSignals, maxLength, fromIndex) {
+  let start = -1;
+  for (const signal of startSignals) {
+    const index = text.toLowerCase().indexOf(signal.toLowerCase(), fromIndex);
+    if (index >= 0 && (start < 0 || index < start)) {
+      start = index;
+    }
+  }
+  if (start < 0) {
+    return '';
+  }
+
+  let end = -1;
+  for (const signal of endSignals) {
+    const index = text.toLowerCase().indexOf(signal.toLowerCase(), start + 20);
+    if (index > start && (end < 0 || index < end)) {
+      end = index;
+    }
+  }
+  const passage = text.slice(start, end > start ? end : Math.min(text.length, start + maxLength)).trim();
+  return passage.length > maxLength ? passage.slice(0, maxLength) : passage;
 }
 
 function buildSafetyText(chunks) {
@@ -697,6 +965,39 @@ function translateLeafletFactToEnglish(value) {
     .trim();
 }
 
+function translateLeafletExcerptToEnglish(value) {
+  return String(value ?? '')
+    .replace(/Substancją czynną leku jest/gi, 'The active substance is')
+    .replace(/Substancja czynna leku to/gi, 'The active substance is')
+    .replace(/bupropionu chlorowodorek/gi, 'bupropion hydrochloride')
+    .replace(/Bupropioni hydrochloridum/gi, 'bupropion hydrochloride')
+    .replace(/Każda tabletka zawiera/gi, 'Each tablet contains')
+    .replace(/jedna tabletka/gi, '1 tablet')
+    .replace(/jeden tabletka/gi, '1 tablet')
+    .replace(/dwie tabletki/gi, '2 tablets')
+    .replace(/tabletki/g, 'tablets')
+    .replace(/tabletka/g, 'tablet')
+    .replace(/raz na dobę/gi, 'once daily')
+    .replace(/rano/gi, 'morning')
+    .replace(/bezpośrednio przed,\s*w trakcie lub po posiłkach/gi, 'immediately before, during, or after meals')
+    .replace(/w razie konieczności,\s*również przed snem/gi, 'if needed, also before bedtime')
+    .replace(/należy przyjmować tak długo jak występują dolegliwości/gi, 'take as long as symptoms persist')
+    .replace(/Kiedy nie stosować leku/gi, 'Do not use this medicine')
+    .replace(/Kiedy nie stosować/gi, 'Do not use')
+    .replace(/jeśli pacjent ma uczulenie na/gi, 'if the patient is allergic to')
+    .replace(/jeżeli pacjent ma uczulenie na/gi, 'if the patient is allergic to')
+    .replace(/lub którykolwiek z pozostałych składników tego leku/gi, 'or any of the other ingredients of this medicine')
+    .replace(/którykolwiek z pozostałych składników tego leku/gi, 'any of the other ingredients of this medicine')
+    .replace(/wymienionych w punkcie 6/gi, 'listed in section 6')
+    .replace(/Ostrzeżenia i środki ostrożności/gi, 'Warnings and precautions')
+    .replace(/Przed rozpoczęciem stosowania/gi, 'Before using')
+    .replace(/należy omówić to z lekarzem lub farmaceutą/gi, 'talk to a doctor or pharmacist')
+    .replace(/pacjent/gi, 'patient')
+    .replace(/leku/gi, 'medicine')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function chooseReminderCount(frequency) {
   const lower = frequency.toLowerCase();
   if (lower.includes('raz na dobę') || lower.includes('once daily') || lower.includes('once a day') ||
@@ -772,6 +1073,21 @@ function buildHowToTakeText(dose, frequency, timing, duration) {
     `Timing: ${timing}`,
     `Duration: ${duration}`
   ].join('\n');
+}
+
+function normalizeReminderDuration(value) {
+  const clean = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (clean.length === 0 || clean.includes('Not found') || clean.includes('Not set')) {
+    return '7 days (reference only; stop earlier if symptoms resolve)';
+  }
+
+  const lower = clean.toLowerCase();
+  if (lower.includes('as long as symptoms') || lower.includes('symptoms persist') ||
+    lower.includes('tak długo jak występują dolegliwości')) {
+    return '7 days (reference only; stop earlier if symptoms resolve)';
+  }
+
+  return clean;
 }
 
 function buildReminderWarning(ageMessage, reminderCount, frequency) {
