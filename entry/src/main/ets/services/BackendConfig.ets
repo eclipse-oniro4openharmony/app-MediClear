@@ -12,6 +12,10 @@ export function buildDocumentChunksUrl(documentId: number): string {
   return `${MEDICLEAR_BACKEND_BASE_URL}/api/documents/${documentId}/chunks`;
 }
 
+export function buildDocumentFactsUrl(documentId: number): string {
+  return `${MEDICLEAR_BACKEND_BASE_URL}/api/documents/${documentId}/facts`;
+}
+
 export function buildDocumentSearchUrl(): string {
   return `${MEDICLEAR_BACKEND_BASE_URL}/api/search`;
 }
@@ -26,4 +30,8 @@ export function buildReminderPlanUrl(): string {
 
 export function buildLatestDocumentByProductUrl(productId: string): string {
   return `${MEDICLEAR_BACKEND_BASE_URL}/api/documents/by-product/${productId}`;
+}
+
+export function buildLatestLeafletByProductUrl(productId: string): string {
+  return `${MEDICLEAR_BACKEND_BASE_URL}/api/documents/by-product/${productId}?documentType=leaflet`;
 }
