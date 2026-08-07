@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import promptAction from '@ohos.promptAction';
+import { preferences } from '@kit.ArkData';
 import { MediClearDatabase } from '../database/MediClearDatabase';
 import { RplMedicineDAO } from '../database/RplMedicineDAO';
 import { RplMedicineRecord } from '../database/RplMedicineRecord';
@@ -163,6 +164,8 @@ struct Index {
   @State pendingReminderPlanItems: ReminderItem[] = [];
   @State pendingReminderPlanSummary: string = '';
   @State pendingReminderPlanWarning: string = '';
+  @State medicines: MedicineRecord[] = [];
+  @State historySearchQuery: string = '';
 
   private sexOptions: SelectOption[] = [
     { value: 'Male' },
@@ -202,19 +205,13 @@ struct Index {
     new ActionItem('Medicine History', 'Past medicines and guides', $r('app.media.bi_clock_history'), '#6554D9')
   ];
 
-  private medicines: MedicineRecord[] = [
-    new MedicineRecord('Espumisan 40 mg', 'Anti-flatulence medicine', 'Jul 29, 2026', 'Active', '#009F9A', '2268'),
-    new MedicineRecord('Ibuprofen 200 mg', 'Pain reliever / Fever reducer', 'May 20, 2024', 'Active', '#009F9A'),
-    new MedicineRecord('Vitamin C 500 mg', 'Immune support', 'May 10, 2024', 'Completed', '#E97921'),
-    new MedicineRecord('Cetirizine 10 mg', 'Allergy relief', 'Apr 28, 2024', 'Completed', '#1A9D9A'),
-    new MedicineRecord('Cold Relief Syrup', 'Cough & cold relief', 'Apr 15, 2024', 'Expired', '#9A6429')
-  ];
-
   private reminders: ReminderItem[] = [
     new ReminderItem('08:30', 'After breakfast', '1 tablet', $r('app.media.bi_sun'), '#009F9A', '#E7FAF6'),
     new ReminderItem('19:30', 'After dinner', '1 tablet', $r('app.media.bi_moon_stars'), '#5648D9', '#F0EEFF')
   ];
 
+  private historyPreferencesName: string = 'mediclear_history';
+  private historyPreferencesKey: string = 'medicine_history';
   private chatMarkdownController: MarkdownController = new MarkdownController();
 
   aboutToAppear(): void {
@@ -230,6 +227,7 @@ struct Index {
       .setUlPointColor('#1F2A44')
       .setUlPointSize(4);
     this.chatMarkdownController.setBlockSpacing(6);
+    this.loadMedicineHistory();
   }
 
   build() {
@@ -258,8 +256,10 @@ struct Index {
                 this.ProfileView()
               }
             }
-            .padding({ left: 20, right: 20, top: this.currentTab === 0 && !this.showBasicsForm ? 8 : 18, bottom: 92 })
+            .padding({ left: 20, right: 20, top: this.contentTopPadding(), bottom: 92 })
             .width('100%')
+            .constraintSize({ minHeight: '100%' })
+            .justifyContent(FlexAlign.Start)
           }
           .scrollBar(BarState.Off)
           .layoutWeight(1)
@@ -281,6 +281,13 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor('#F6FBFC')
+  }
+
+  private contentTopPadding(): number {
+    if (this.currentTab === 0 && !this.showBasicsForm) {
+      return 8;
+    }
+    return 18;
   }
 
   @Builder
@@ -343,7 +350,11 @@ struct Index {
 
       this.UploadAnalysisPanel()
       this.SectionTitle('Recent Medicine', 'See all')
-      this.MedicineMiniCard(new MedicineRecord(this.medicineName, this.medicineSubtitle, 'Today', 'Active', '#009F9A'))
+      if (this.medicines.length > 0) {
+        this.MedicineMiniCard(this.medicines[0])
+      } else {
+        this.EmptyRecentMedicineCard()
+      }
       this.PrivacyCard()
       this.GuideTabs()
     }
@@ -1223,51 +1234,19 @@ struct Index {
   HistoryView() {
     Column({ space: 16 }) {
       this.PageTop('Medicine History')
-      Row({ space: 8 }) {
-        Text('Search medicines')
+      TextInput({ placeholder: 'Search medicines', text: this.historySearchQuery })
           .fontSize(14)
-          .fontColor('#7A8797')
-          .layoutWeight(1)
+          .fontColor('#111827')
+          .placeholderColor('#7A8797')
           .padding({ left: 14, right: 14 })
           .height(44)
           .backgroundColor(Color.White)
           .borderRadius(10)
           .border({ width: 1, color: '#E4EAF0' })
-
-        Row({ space: 6 }) {
-          Text('All')
-            .fontSize(14)
-            .fontColor('#008A88')
-          Image($r('app.media.bi_chevron_down'))
-            .width(13)
-            .height(13)
-            .fillColor('#008A88')
-        }
-        .padding({ left: 14, right: 14 })
-        .height(44)
-        .backgroundColor('#E8F8F6')
-        .borderRadius(10)
-      }
-      .width('100%')
-
-      Row() {
-        this.IconBubble($r('app.media.bi_clipboard_check'), '#EAF2FF', '#1767C5')
-        Column({ space: 3 }) {
-          Text('12 medicines saved')
-            .fontSize(16)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#111827')
-          Text('Your personal medicine record')
-            .fontSize(12)
-            .fontColor('#64748B')
-        }
-        .layoutWeight(1)
-        this.ChevronRight('#36506B')
-      }
-      .padding(14)
-      .backgroundColor(Color.White)
-      .borderRadius(12)
-      .shadow({ radius: 10, color: '#14006472', offsetY: 4 })
+          .width('100%')
+          .onChange((value: string) => {
+            this.historySearchQuery = value;
+          })
 
       Text('Recent Entries')
         .fontSize(16)
@@ -1275,29 +1254,34 @@ struct Index {
         .fontColor('#111827')
         .width('100%')
 
-      Column({ space: 0 }) {
-        ForEach(this.medicines, (item: MedicineRecord) => {
-          this.HistoryRow(item)
-        }, (item: MedicineRecord) => item.name)
-      }
-      .backgroundColor(Color.White)
-      .borderRadius(12)
-      .clip(true)
-
-      Button('View All History')
-        .fontSize(15)
-        .fontColor('#263B55')
-        .backgroundColor('#FFFFFF')
-        .border({ width: 1, color: '#9BA8B6' })
-        .borderRadius(10)
-        .height(48)
+      if (this.filteredMedicineHistory().length > 0) {
+        Column({ space: 0 }) {
+          ForEach(this.filteredMedicineHistory(), (item: MedicineRecord) => {
+            this.HistoryRow(item)
+          }, (item: MedicineRecord) => item.productId.length > 0 ? item.productId : item.name)
+        }
+        .backgroundColor(Color.White)
+        .borderRadius(12)
+        .clip(true)
+      } else {
+        Column({ space: 10 }) {
+          this.IconBubble($r('app.media.bi_clock_history'), '#F0EDFF', '#6554D9')
+          Text('No medicine history yet')
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#111827')
+          Text(this.medicines.length > 0 ? 'No medicines match your search.' :
+            'Take a photo or upload a medicine guide. Matched medicines will appear here automatically.')
+            .fontSize(13)
+            .fontColor('#536175')
+            .lineHeight(18)
+            .textAlign(TextAlign.Center)
+        }
+        .padding(18)
+        .backgroundColor(Color.White)
+        .borderRadius(12)
         .width('100%')
-        .stateStyles({
-          pressed: {
-            .opacity(0.82)
-            .scale({ x: 0.98, y: 0.98 })
-          }
-        })
+      }
     }
     .width('100%')
   }
@@ -1751,6 +1735,28 @@ struct Index {
   }
 
   @Builder
+  EmptyRecentMedicineCard() {
+    Row({ space: 14 }) {
+      this.IconBubble($r('app.media.bi_cloud_upload'), '#E8F8F6', '#008A88')
+      Column({ space: 4 }) {
+        Text('No medicine searched yet')
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
+        Text('Scan a package or guide to add it to History.')
+          .fontSize(12)
+          .fontColor('#5B6778')
+      }
+      .layoutWeight(1)
+    }
+    .padding(14)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .shadow({ radius: 10, color: '#12006472', offsetY: 4 })
+    .width('100%')
+  }
+
+  @Builder
   HistoryRow(record: MedicineRecord) {
     Row({ space: 12 }) {
       this.PillBottle(record.tint)
@@ -1762,29 +1768,17 @@ struct Index {
         Text(record.subtitle)
           .fontSize(12)
           .fontColor('#5B6778')
-        Text(record.date)
-          .fontSize(11)
-          .fontColor('#5B6778')
       }
       .layoutWeight(1)
-      Text(record.status)
+      Text(record.date)
         .fontSize(11)
-        .fontColor(record.status === 'Active' ? '#007A68' : (record.status === 'Expired' ? '#7B7F86' : '#1261BA'))
+        .fontColor('#1261BA')
         .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-        .backgroundColor(record.status === 'Active' ? '#DDF8EA' : (record.status === 'Expired' ? '#EEF0F2' : '#E6F0FF'))
+        .backgroundColor('#E6F0FF')
         .borderRadius(8)
-      this.ChevronRight('#4D6682')
     }
     .padding(14)
     .border({ width: { bottom: 1 }, color: '#EEF2F6' })
-    .stateStyles({
-      pressed: {
-        .opacity(0.86)
-      }
-    })
-    .onClick(() => {
-      this.switchToHistoryMedicine(record);
-    })
   }
 
   @Builder
@@ -2870,6 +2864,98 @@ struct Index {
     this.reminderOneDose = this.extractDoseFromHowToTake(parsed.howToTake);
     this.reminderTwoDose = this.reminderOneDose;
     this.pendingReminderPlanItems = [];
+    this.upsertMedicineHistory(parsed);
+  }
+
+  private async loadMedicineHistory(): Promise<void> {
+    try {
+      const store = await preferences.getPreferences(getContext(this), this.historyPreferencesName);
+      const rawValue = await store.get(this.historyPreferencesKey, '');
+      const raw = rawValue.toString();
+      if (raw.length === 0) {
+        return;
+      }
+      const parsedRecords = JSON.parse(raw) as MedicineRecord[];
+      const records: MedicineRecord[] = [];
+      for (let index = 0; index < parsedRecords.length; index++) {
+        const item = parsedRecords[index];
+        if (item.name.length > 0) {
+          records.push(new MedicineRecord(
+            item.name,
+            item.subtitle,
+            item.date,
+            item.status,
+            item.tint,
+            item.productId
+          ));
+        }
+      }
+      this.medicines = records;
+    } catch (err) {
+      console.error('[MediClearHistory] load failed: ' + JSON.stringify(err));
+    }
+  }
+
+  private async saveMedicineHistory(): Promise<void> {
+    try {
+      const store = await preferences.getPreferences(getContext(this), this.historyPreferencesName);
+      await store.put(this.historyPreferencesKey, JSON.stringify(this.medicines));
+      await store.flush();
+    } catch (err) {
+      console.error('[MediClearHistory] save failed: ' + JSON.stringify(err));
+    }
+  }
+
+  private filteredMedicineHistory(): MedicineRecord[] {
+    const query = this.normalizeMatchText(this.historySearchQuery);
+    if (query.length === 0) {
+      return this.medicines;
+    }
+
+    const results: MedicineRecord[] = [];
+    for (let index = 0; index < this.medicines.length; index++) {
+      const item = this.medicines[index];
+      const haystack = this.normalizeMatchText(item.name + ' ' + item.subtitle + ' ' + item.productId + ' ' +
+        item.status);
+      if (haystack.indexOf(query) >= 0) {
+        results.push(item);
+      }
+    }
+    return results;
+  }
+
+  private upsertMedicineHistory(parsed: ParsedMedicineGuide): void {
+    if (parsed.name.trim().length === 0) {
+      return;
+    }
+
+    const productKey = parsed.productId.trim();
+    const updated = new MedicineRecord(
+      parsed.name,
+      parsed.subtitle.length > 0 ? parsed.subtitle : 'Medicine matched from local RPL database',
+      this.formatHistoryTime(),
+      'Ready',
+      '#009F9A',
+      productKey
+    );
+    const kept: MedicineRecord[] = [];
+    for (let index = 0; index < this.medicines.length; index++) {
+      const item = this.medicines[index];
+      const sameProduct = productKey.length > 0 && item.productId === productKey;
+      const sameName = productKey.length === 0 && item.name.toLowerCase() === parsed.name.toLowerCase();
+      if (!sameProduct && !sameName) {
+        kept.push(item);
+      }
+    }
+    this.medicines = [updated].concat(kept);
+    this.saveMedicineHistory();
+  }
+
+  private formatHistoryTime(): string {
+    const now = new Date();
+    const hours = now.getHours().toString().padStart(2, '0');
+    const minutes = now.getMinutes().toString().padStart(2, '0');
+    return hours + ':' + minutes;
   }
 
   private stageReminderPlanForConfirmation(plan: BackendReminderPlanResponse): void {
