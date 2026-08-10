@@ -22,6 +22,31 @@ The app helps users understand official medicine labels, packages, leaflets, PDF
 
 MediClear uses a HarmonyOS / OpenHarmony ArkTS mobile app plus a Docker backend for official leaflet extraction, knowledge-base storage, chat answers, and reminder planning.
 
+### Prerequisites
+
+Before deploying MediClear, install and verify:
+
+- DevEco Studio or a compatible HarmonyOS / OpenHarmony SDK and command-line toolchain.
+- Node.js and `ohpm`, used to install ArkTS project dependencies.
+- Docker Desktop or Docker Engine, used to run the backend and its database services.
+- `oniro-app`, used by this project for command-line build/deploy workflows.
+- A HarmonyOS / OpenHarmony device or emulator for running the mobile app.
+- A backend LLM provider, either local, self-hosted, or hosted, exposed through an OpenAI-compatible `/v1` API.
+
+Install `oniro-app` if it is not already available:
+
+```bash
+npm install -g @oniroproject/oniro-app
+```
+
+Verify the toolchain:
+
+```bash
+oniro-app --version
+docker --version
+ohpm --version
+```
+
 ### 1. Start the Backend
 
 Start the backend from the `backend` folder:
