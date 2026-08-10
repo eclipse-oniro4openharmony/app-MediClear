@@ -4,6 +4,20 @@ MediClear is a mobile AI medicine label assistant that turns complex over-the-co
 
 The app helps users understand official medicine labels, packages, leaflets, PDFs, and usage guides. It is designed to extract and organize information from medicine instructions, not to diagnose users or recommend what medicine they should take.
 
+## Screenshots
+
+| Home Search and Analysis | Medicine History | Reminder Summary |
+| --- | --- | --- |
+| <img src="screenshots/screenshot_20260810_150204_myapplicaiton.huawei.myapplication.jpg" width="220" alt="Home search with Oribion medicine analysis" /> | <img src="screenshots/screenshot_20260810_150641_myapplicaiton.huawei.myapplication.jpg" width="220" alt="Medicine history with Oribion entry" /> | <img src="screenshots/screenshot_20260810_150251_myapplicaiton.huawei.myapplication.jpg" width="220" alt="Medication reminder calendar showing more plans below" /> |
+
+| Add Reminder Confirmation | Leaflet-Backed Chat | Export History |
+| --- | --- | --- |
+| <img src="screenshots/screenshot_20260810_150623_myapplicaiton.huawei.myapplication.jpg" width="220" alt="Add medicine reminders confirmation dialog" /> | <img src="screenshots/screenshot_20260810_150724_myapplicaiton.huawei.myapplication.jpg" width="220" alt="Chat answer based on the official Oribion leaflet" /> | <img src="screenshots/screenshot_20260810_150755_myapplicaiton.huawei.myapplication.jpg" width="220" alt="Export medicine history as PDF" /> |
+
+| Medicine-Time Dialog | System Notification |
+| --- | --- |
+| <img src="screenshots/screenshot_20260810_150905_myapplicaiton.huawei.myapplication.jpg" width="220" alt="Medicine time dialog with Cancel and Confirm buttons" /> | <img src="screenshots/screenshot_20260810_150917_SCBDropdownPanel17.jpg" width="220" alt="System notification for medicine time" /> |
+
 ## Core Idea
 
 Medicine labels and instruction leaflets are often long, technical, and difficult to follow. MediClear converts that information into a readable checklist that focuses on what users need most:
