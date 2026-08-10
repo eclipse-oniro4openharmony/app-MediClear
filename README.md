@@ -18,6 +18,69 @@ The app helps users understand official medicine labels, packages, leaflets, PDF
 | --- | --- |
 | <img src="screenshots/screenshot_20260810_150905_myapplicaiton.huawei.myapplication.jpg" width="220" alt="Medicine time dialog with Cancel and Confirm buttons" /> | <img src="screenshots/screenshot_20260810_150917_SCBDropdownPanel17.jpg" width="220" alt="System notification for medicine time" /> |
 
+## Deployment
+
+MediClear uses a HarmonyOS / OpenHarmony ArkTS mobile app plus a Docker backend for official leaflet extraction, knowledge-base storage, chat answers, and reminder planning.
+
+### 1. Start the Backend
+
+Start the backend from the `backend` folder:
+
+```bash
+cd backend
+docker compose up --build
+```
+
+Configure the backend LLM provider in `backend/.env`. The backend expects an OpenAI-compatible chat-completions endpoint, so it can use a local model, a self-hosted gateway, or a hosted provider.
+
+Example for a local Ollama model exposed through an OpenAI-compatible endpoint:
+
+```text
+LLM_API_KEY=
+LLM_BASE_URL=http://host.docker.internal:11434/v1
+LLM_MODEL=llama3.2:3b
+```
+
+Example for a hosted OpenAI-compatible provider:
+
+```text
+LLM_API_KEY=your_api_key
+LLM_BASE_URL=https://your-provider.example.com/v1
+LLM_MODEL=your-model-name
+```
+
+Configure the mobile app backend URL in:
+
+```text
+entry/src/main/ets/services/BackendConfig.ets
+```
+
+For a physical phone, set the app backend URL to the computer's LAN address on the same Wi-Fi, for example `http://192.168.x.x:18080`. Windows Firewall or the host firewall must allow inbound traffic on port `18080`. Do not use `127.0.0.1` on a physical phone, because that points to the phone itself.
+
+### 2. Install App Dependencies
+
+Install ArkTS dependencies from the project root:
+
+```bash
+ohpm install --all
+```
+
+The Chat page uses `@luvi/lv-markdown-in` to render assistant answers that contain Markdown. If the dependency is missing, install it with:
+
+```bash
+ohpm install @luvi/lv-markdown-in
+```
+
+### 3. Build the App
+
+Build the HarmonyOS / OpenHarmony app from the project root:
+
+```bash
+oniro-app build
+```
+
+The app can then be installed and launched through DevEco Studio or your normal HarmonyOS device workflow.
+
 ## Core Idea
 
 Medicine labels and instruction leaflets are often long, technical, and difficult to follow. MediClear converts that information into a readable checklist that focuses on what users need most:
@@ -208,60 +271,7 @@ Possible components:
 - UI: ArkTS and ArkUI
 - Optional AI model: local model or self-hosted LLM
 
-### App Dependencies
-
-Install ArkTS dependencies before building the mobile app:
-
-```bash
-ohpm install --all
-```
-
-The Chat page uses `@luvi/lv-markdown-in` to render assistant answers that contain Markdown. If the dependency is missing, install it with:
-
-```bash
-ohpm install @luvi/lv-markdown-in
-```
-
-Build the HarmonyOS / OpenHarmony app from the project root:
-
-```bash
-oniro-app build
-```
-
-### Backend Configuration
-
-The mobile app uses a separate Docker backend for PDF leaflet extraction and knowledge-base chunk storage.
-
-Start the backend from the `backend` folder:
-
-```bash
-cd backend
-docker compose up --build
-```
-
-For local Llama through Ollama, configure `backend/.env` like this:
-
-```text
-LLM_API_KEY=
-LLM_BASE_URL=http://host.docker.internal:11434/v1
-LLM_MODEL=llama3.2:3b
-```
-
-Current physical-phone backend URL:
-
-```text
-http://192.168.123.131:18080
-```
-
-The ArkTS config is in:
-
-```text
-entry/src/main/ets/services/BackendConfig.ets
-```
-
 Chat answers can include concise Markdown such as bold labels, bullet lists, and numbered steps. The ArkUI chat page renders assistant replies with `@luvi/lv-markdown-in`, while user messages remain normal text bubbles.
-
-For a physical phone, the phone and computer must be on the same Wi-Fi, and Windows Firewall must allow inbound traffic on port `18080`. Do not use `127.0.0.1` on a physical phone, because that points to the phone itself.
 
 ### Text Extraction
 
