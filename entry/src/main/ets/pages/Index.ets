@@ -215,6 +215,8 @@ struct Index {
   @State showUploadSheet: boolean = false;
   @State showBasicsForm: boolean = false;
   @State showReminderConfirmDialog: boolean = false;
+  @State showDuplicateReminderDialog: boolean = false;
+  @State duplicateReminderMessage: string = '';
   @State autoGenerateReminders: boolean = true;
   @State uploadState: string = 'No medicine guide scanned yet';
   @State uploadSource: string = 'Tap Upload Medicine Guide to scan a medicine leaflet.';
@@ -271,6 +273,7 @@ struct Index {
   @State reminderCalendarWeeks: ReminderCalendarWeek[] = [];
   @State showReminderTimeDialog: boolean = false;
   @State editingReminderIndex: number = -1;
+  @State editingReminderSource: string = '';
   @State editingReminderHour: number = 8;
   @State editingReminderMinute: number = 30;
   @State revealedReminderKey: string = '';
@@ -293,6 +296,7 @@ struct Index {
   @State selectedHistoryKey: string = '';
   @State historyDetailStatus: string = '';
   @State settingsDetailPage: string = '';
+  @State homeMedicineSearchQuery: string = '';
 
   private sexOptions: SelectOption[] = [
     { value: 'Male' },
@@ -427,6 +431,10 @@ struct Index {
         this.ReminderConfirmDialog()
       }
 
+      if (this.showDuplicateReminderDialog) {
+        this.DuplicateReminderDialog()
+      }
+
       if (this.showReminderTimeDialog) {
         this.ReminderTimeDialog()
       }
@@ -468,6 +476,19 @@ struct Index {
   }
 
   private homeRecentMedicines(): MedicineRecord[] {
+    const query = this.normalizeMatchText(this.homeMedicineSearchQuery);
+    if (query.length > 0) {
+      const results: MedicineRecord[] = [];
+      for (let index = 0; index < this.medicines.length; index++) {
+        const item = this.medicines[index];
+        const haystack = this.normalizeMatchText(item.name + ' ' + item.subtitle + ' ' + item.activeIngredient +
+          ' ' + item.productId);
+        if (haystack.indexOf(query) >= 0) {
+          results.push(item);
+        }
+      }
+      return results;
+    }
     if (this.homeRecentExpanded) {
       return this.medicines;
     }
@@ -743,6 +764,7 @@ struct Index {
       .width('100%')
 
       this.SetupProfileCard()
+      this.HomeMedicineSearchBar()
 
       Column({ space: 12 }) {
         ForEach(this.actions, (item: ActionItem, index: number) => {
@@ -755,12 +777,12 @@ struct Index {
       .shadow({ radius: 18, color: '#11006472', offsetY: 8 })
 
       this.UploadAnalysisPanel()
-      this.SectionTitle('Recent Medicine', this.homeRecentExpanded ? 'Collapse' : 'See all', 'history')
+      this.RecentMedicineHeader()
       if (this.medicines.length > 0) {
         Column({ space: 10 }) {
           ForEach(this.homeRecentMedicines(), (item: MedicineRecord) => {
-            this.MedicineMiniCard(item)
-          }, (item: MedicineRecord) => item.productId.length > 0 ? item.productId : item.name)
+          this.MedicineMiniCard(item)
+          }, (item: MedicineRecord) => this.historyRecordKey(item))
         }
         .width('100%')
       } else {
@@ -769,6 +791,81 @@ struct Index {
       this.PrivacyCard()
     }
     .width('100%')
+  }
+
+  @Builder
+  HomeMedicineSearchBar() {
+    Row({ space: 10 }) {
+      TextInput({ placeholder: 'Search medicines', text: this.homeMedicineSearchQuery })
+        .fontSize(14)
+        .fontColor('#111827')
+        .placeholderColor('#7A8797')
+        .padding({ left: 14, right: 14 })
+        .height(44)
+        .backgroundColor(Color.White)
+        .borderRadius(10)
+        .border({ width: 1, color: '#E4EAF0' })
+        .layoutWeight(1)
+        .enterKeyType(EnterKeyType.Search)
+        .onSubmit(() => {
+          void this.searchMedicineFromHome();
+        })
+        .onChange((value: string) => {
+          this.homeMedicineSearchQuery = value;
+          if (value.trim().length > 0) {
+            this.homeRecentExpanded = true;
+          }
+        })
+      Button('Search')
+        .fontSize(13)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(Color.White)
+        .height(44)
+        .width(82)
+        .backgroundColor('#009F9A')
+        .borderRadius(10)
+        .stateStyles({
+          pressed: {
+            .opacity(0.82)
+            .scale({ x: 0.96, y: 0.96 })
+          }
+        })
+        .onClick(() => {
+          void this.searchMedicineFromHome();
+        })
+    }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+  }
+
+  @Builder
+  RecentMedicineHeader() {
+    Row() {
+      Text('Recent Medicine')
+        .fontSize(17)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111827')
+        .layoutWeight(1)
+      Button(this.homeRecentExpanded ? 'Collapse' : 'See all')
+        .fontSize(13)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#008A88')
+        .backgroundColor('#E8F8F6')
+        .borderRadius(12)
+        .height(34)
+        .padding({ left: 12, right: 12 })
+        .stateStyles({
+          pressed: {
+            .opacity(0.82)
+            .scale({ x: 0.96, y: 0.96 })
+          }
+        })
+        .onClick(() => {
+          this.homeRecentExpanded = !this.homeRecentExpanded;
+        })
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
   }
 
   @Builder
@@ -1455,17 +1552,31 @@ struct Index {
           .border({ width: 1, color: '#DCEBED' })
           .borderRadius(10)
 
-        Button('Confirm')
-          .fontSize(16)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(Color.White)
-          .backgroundColor('#009F9A')
-          .borderRadius(10)
-          .height(48)
-          .width('100%')
-          .onClick(() => {
-            this.confirmActiveReminderAlert();
-          })
+        Row({ space: 10 }) {
+          Button('Cancel')
+            .fontSize(15)
+            .fontColor('#263244')
+            .backgroundColor('#FFFFFF')
+            .border({ width: 1, color: '#D6DEE8' })
+            .borderRadius(10)
+            .height(46)
+            .layoutWeight(1)
+            .onClick(() => {
+              this.cancelActiveReminderAlert();
+            })
+          Button('Confirm')
+            .fontSize(15)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(Color.White)
+            .backgroundColor('#009F9A')
+            .borderRadius(10)
+            .height(46)
+            .layoutWeight(1)
+            .onClick(() => {
+              this.confirmActiveReminderAlert();
+            })
+        }
+        .width('100%')
       }
       .width('86%')
       .constraintSize({ maxWidth: 420 })
@@ -2375,13 +2486,18 @@ struct Index {
   }
 
   @Builder
-  PageTop(title: string) {
+  PageTop(title: string, showBack: boolean = false) {
     Row() {
-      Image($r('app.media.bi_chevron_left'))
-        .width(22)
-        .height(22)
-        .fillColor('#20324A')
-        .width(36)
+      if (showBack) {
+        Image($r('app.media.bi_chevron_left'))
+          .width(22)
+          .height(22)
+          .fillColor('#20324A')
+          .width(36)
+      } else {
+        Blank()
+          .width(36)
+      }
       Text(title)
         .fontSize(19)
         .fontWeight(FontWeight.Bold)
@@ -2640,11 +2756,24 @@ struct Index {
 
   @Builder
   ReminderCard(item: ReminderItem) {
-    Stack({ alignContent: Alignment.End }) {
+    Stack() {
       Row() {
+        if (this.revealedReminderKey === this.reminderItemKey(item) && this.reminderCardSwipeOffset(item) > 0) {
+          Button(this.isReminderConfirmed(item) ? 'Mark as untaken' : 'Mark as taken')
+            .fontSize(12)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(Color.White)
+            .backgroundColor('#009F9A')
+            .borderRadius(12)
+            .height(128)
+            .width(152)
+            .onClick(() => {
+              this.toggleReminderTaken(item);
+            })
+        }
         Blank()
           .layoutWeight(1)
-        if (this.revealedReminderKey === this.reminderItemKey(item) || this.reminderCardSwipeOffset(item) < 0) {
+        if (this.revealedReminderKey === this.reminderItemKey(item) && this.reminderCardSwipeOffset(item) < 0) {
           Button('Delete')
             .fontSize(13)
             .fontWeight(FontWeight.Bold)
@@ -3140,8 +3269,17 @@ struct Index {
               Text(item.time)
                 .fontSize(16)
                 .fontWeight(FontWeight.Bold)
-                .fontColor('#111827')
-                .width(58)
+                .fontColor('#007D83')
+                .textAlign(TextAlign.Center)
+                .height(42)
+                .width(86)
+                .padding({ left: 4, right: 4 })
+                .backgroundColor('#E8F8F6')
+                .border({ width: 1, color: '#78D5D1' })
+                .borderRadius(10)
+                .onClick(() => {
+                  this.startEditPendingReminderTime(item);
+                })
               Column({ space: 2 }) {
                 Text(item.label)
                   .fontSize(13)
@@ -3204,6 +3342,51 @@ struct Index {
       .padding(16)
       .backgroundColor(Color.White)
       .borderRadius(14)
+      .shadow({ radius: 24, color: '#33000000', offsetY: 8 })
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
+  DuplicateReminderDialog() {
+    Stack() {
+      Rect()
+        .fill('#66000000')
+        .width('100%')
+        .height('100%')
+      Column({ space: 14 }) {
+        this.IconBubble($r('app.media.bi_exclamation_triangle'), '#FFF4F4', '#B42318')
+        Text('Duplicate reminder')
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
+          .textAlign(TextAlign.Center)
+          .width('100%')
+        Text(this.duplicateReminderMessage)
+          .fontSize(14)
+          .fontColor('#42566F')
+          .lineHeight(20)
+          .textAlign(TextAlign.Center)
+          .width('100%')
+        Button('OK')
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Color.White)
+          .backgroundColor('#009F9A')
+          .borderRadius(10)
+          .height(46)
+          .width('100%')
+          .onClick(() => {
+            this.showDuplicateReminderDialog = false;
+            this.duplicateReminderMessage = '';
+          })
+      }
+      .width('86%')
+      .constraintSize({ maxWidth: 420 })
+      .padding(18)
+      .backgroundColor(Color.White)
+      .borderRadius(16)
       .shadow({ radius: 24, color: '#33000000', offsetY: 8 })
     }
     .width('100%')
@@ -3423,24 +3606,10 @@ struct Index {
       this.uploadState = 'OCR 1/4 Reading selected file...';
       const ocrText = await this.extractTextWithCoreVision(guideUri, sourceType);
       console.info('[MediClearOCR] OCR text length=' + ocrText.length.toString());
-      this.extractedOcrText = ocrText;
-      this.uploadState = 'OCR complete - matching local RPL database...';
-
-      const database = await MediClearDatabase.getInstance(getContext(this));
-      const dao = new RplMedicineDAO(database.getStore());
-      const matches = await dao.searchByOcrText(ocrText);
-      if (matches.length === 0) {
-        this.uploadState = 'No local RPL match found';
-        this.uploadSource = 'OCR text:\n' + ocrText + '\n\nSearch terms:\n' + dao.getDebugSearchTerms(ocrText) +
-          '\n\nNo matching local RPL record was found.';
+      const matched = await this.matchAndApplyMedicineText(ocrText, 'OCR text', !isChatUpload);
+      if (!matched) {
         return;
       }
-
-      const parsed: ParsedMedicineGuide = this.parseMedicineGuide(ocrText);
-      this.applyRplMatchToParsedGuide(parsed, matches[0]);
-      this.applyParsedMedicineGuide(parsed);
-      this.uploadState = 'RPL match found - preparing backend knowledge base...';
-      await this.prepareBackendKnowledgeBase(parsed, !isChatUpload);
       this.uploadState = 'Analysis complete - backend knowledge base ready';
       if (!isChatUpload) {
         this.selectedGuide = 0;
@@ -3450,6 +3619,71 @@ struct Index {
       this.uploadState = 'Text extraction unavailable';
       this.uploadSource = 'MediClear could not extract text from this file.\nError: ' + JSON.stringify(err);
     }
+  }
+
+  private async searchMedicineFromHome(): Promise<void> {
+    const query = this.homeMedicineSearchQuery.trim();
+    if (query.length === 0) {
+      promptAction.showToast({
+        message: 'Enter a medicine name first.',
+        duration: 1600
+      });
+      return;
+    }
+
+    this.showUploadSheet = false;
+    this.selectedGuideUri = '';
+    this.homeRecentExpanded = true;
+    this.uploadState = 'Searching local RPL database...';
+    this.uploadSource = 'Search keywords:\n' + query;
+    try {
+      const matched = await this.matchAndApplyMedicineText(query, 'Search keywords', true);
+      if (!matched) {
+        return;
+      }
+      this.uploadState = 'Analysis complete - backend knowledge base ready';
+      this.selectedGuide = 0;
+      promptAction.showToast({
+        message: 'Medicine found.',
+        duration: 1600
+      });
+    } catch (err) {
+      console.error('[MediClearSearch] search failed: ' + JSON.stringify(err));
+      this.uploadState = 'Medicine search unavailable';
+      this.uploadSource = 'MediClear could not search this medicine.\nError: ' + JSON.stringify(err);
+      promptAction.showToast({
+        message: 'Medicine search failed.',
+        duration: 1800
+      });
+    }
+  }
+
+  private async matchAndApplyMedicineText(inputText: string, inputLabel: string,
+    shouldPrepareReminders: boolean): Promise<boolean> {
+    this.extractedOcrText = inputText;
+    this.uploadState = inputLabel === 'Search keywords' ? 'Searching local RPL database...' :
+      'OCR complete - matching local RPL database...';
+
+    const database = await MediClearDatabase.getInstance(getContext(this));
+    const dao = new RplMedicineDAO(database.getStore());
+    const matches = await dao.searchByOcrText(inputText);
+    if (matches.length === 0) {
+      this.uploadState = 'No local RPL match found';
+      this.uploadSource = inputLabel + ':\n' + inputText + '\n\nSearch terms:\n' + dao.getDebugSearchTerms(inputText) +
+        '\n\nNo matching local RPL record was found.';
+      promptAction.showToast({
+        message: 'No medicine match found.',
+        duration: 1800
+      });
+      return false;
+    }
+
+    const parsed: ParsedMedicineGuide = this.parseMedicineGuide(inputText);
+    this.applyRplMatchToParsedGuide(parsed, matches[0]);
+    this.applyParsedMedicineGuide(parsed);
+    this.uploadState = 'RPL match found - preparing backend knowledge base...';
+    await this.prepareBackendKnowledgeBase(parsed, shouldPrepareReminders);
+    return true;
   }
 
   private async prepareBackendKnowledgeBase(parsed: ParsedMedicineGuide, shouldPrepareReminders: boolean): Promise<void> {
@@ -4506,6 +4740,7 @@ struct Index {
       return;
     }
     this.editingReminderIndex = index;
+    this.editingReminderSource = 'schedule';
     const minutes = this.reminderTimeMinutes(this.reminderPlanItems[index].time);
     if (minutes >= 0 && minutes < 1440) {
       this.editingReminderHour = Math.floor(minutes / 60);
@@ -4515,8 +4750,28 @@ struct Index {
     this.showReminderTimeDialog = true;
   }
 
+  private startEditPendingReminderTime(item: ReminderItem): void {
+    const index = this.findPendingReminderItemIndex(item);
+    if (index < 0) {
+      promptAction.showToast({
+        message: 'Reminder not found.',
+        duration: 1800
+      });
+      return;
+    }
+    this.editingReminderIndex = index;
+    this.editingReminderSource = 'pending';
+    const minutes = this.reminderTimeMinutes(this.pendingReminderPlanItems[index].time);
+    if (minutes >= 0 && minutes < 1440) {
+      this.editingReminderHour = Math.floor(minutes / 60);
+      this.editingReminderMinute = minutes % 60;
+    }
+    this.showReminderTimeDialog = true;
+  }
+
   private cancelReminderTimeEdit(): void {
     this.editingReminderIndex = -1;
+    this.editingReminderSource = '';
     this.showReminderTimeDialog = false;
   }
 
@@ -4549,13 +4804,22 @@ struct Index {
   }
 
   private editingReminderName(): string {
-    if (this.editingReminderIndex >= 0 && this.editingReminderIndex < this.reminderPlanItems.length) {
+    if (this.editingReminderSource === 'pending' &&
+      this.editingReminderIndex >= 0 && this.editingReminderIndex < this.pendingReminderPlanItems.length) {
+      return this.reminderMedicineDisplayName(this.pendingReminderPlanItems[this.editingReminderIndex]);
+    }
+    if (this.editingReminderSource === 'schedule' &&
+      this.editingReminderIndex >= 0 && this.editingReminderIndex < this.reminderPlanItems.length) {
       return this.reminderMedicineDisplayName(this.reminderPlanItems[this.editingReminderIndex]);
     }
     return 'Medicine reminder';
   }
 
   private saveReminderTimeEdit(): void {
+    if (this.editingReminderSource === 'pending') {
+      this.savePendingReminderTimeEdit();
+      return;
+    }
     if (this.editingReminderIndex < 0 || this.editingReminderIndex >= this.reminderPlanItems.length) {
       this.cancelReminderTimeEdit();
       return;
@@ -4591,7 +4855,47 @@ struct Index {
     this.selectedReminderDayItems = this.reminderItemsForDate(this.currentSelectedReminderDate());
     this.setInAppMedicineReminders('Reminder schedule updated.');
     this.editingReminderIndex = -1;
+    this.editingReminderSource = '';
     this.revealedReminderKey = '';
+    this.showReminderTimeDialog = false;
+    promptAction.showToast({
+      message: 'Reminder time updated.',
+      duration: 1800
+    });
+  }
+
+  private savePendingReminderTimeEdit(): void {
+    if (this.editingReminderIndex < 0 || this.editingReminderIndex >= this.pendingReminderPlanItems.length) {
+      this.cancelReminderTimeEdit();
+      return;
+    }
+
+    const updatedItems: ReminderItem[] = [];
+    const newTime = this.formatEditingReminderTime();
+    for (let index = 0; index < this.pendingReminderPlanItems.length; index++) {
+      const item = this.pendingReminderPlanItems[index];
+      if (index === this.editingReminderIndex) {
+        updatedItems.push(new ReminderItem(
+          newTime,
+          item.label,
+          item.dose,
+          item.icon,
+          item.tint,
+          item.background,
+          item.source,
+          item.durationDays,
+          item.durationLabel,
+          item.startDate,
+          item.endDate,
+          item.medicineName
+        ));
+      } else {
+        updatedItems.push(item);
+      }
+    }
+    this.pendingReminderPlanItems = updatedItems;
+    this.editingReminderIndex = -1;
+    this.editingReminderSource = '';
     this.showReminderTimeDialog = false;
     promptAction.showToast({
       message: 'Reminder time updated.',
@@ -4621,6 +4925,7 @@ struct Index {
     this.selectedReminderDayItems = this.reminderItemsForDate(this.currentSelectedReminderDate());
     this.setInAppMedicineReminders('Reminder schedule updated.');
     this.editingReminderIndex = -1;
+    this.editingReminderSource = '';
     this.revealedReminderKey = '';
     this.showReminderTimeDialog = false;
     this.reminderSwipeOffset = 0;
@@ -4628,6 +4933,19 @@ struct Index {
     promptAction.showToast({
       message: 'Reminder deleted.',
       duration: 1800
+    });
+  }
+
+  private toggleReminderTaken(item: ReminderItem): void {
+    const itemKey = this.currentSelectedReminderDate() + '|' + this.reminderItemKey(item);
+    const wasTaken = this.confirmedReminderAlertKey === itemKey;
+    this.confirmedReminderAlertKey = wasTaken ? '' : itemKey;
+    this.revealedReminderKey = '';
+    this.reminderSwipeOffset = 0;
+    this.reminderSwipeStartOffset = 0;
+    promptAction.showToast({
+      message: wasTaken ? 'Reminder marked as untaken.' : 'Reminder marked as taken.',
+      duration: 1600
     });
   }
 
@@ -4645,6 +4963,25 @@ struct Index {
         item.dose === target.dose &&
         item.startDate === target.startDate &&
         item.endDate === target.endDate &&
+        item.medicineName === target.medicineName &&
+        item.source === target.source) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  private findPendingReminderItemIndex(target: ReminderItem): number {
+    for (let index = 0; index < this.pendingReminderPlanItems.length; index++) {
+      if (this.pendingReminderPlanItems[index] === target) {
+        return index;
+      }
+    }
+    for (let index = 0; index < this.pendingReminderPlanItems.length; index++) {
+      const item = this.pendingReminderPlanItems[index];
+      if (item.time === target.time &&
+        item.label === target.label &&
+        item.dose === target.dose &&
         item.medicineName === target.medicineName &&
         item.source === target.source) {
         return index;
@@ -4687,8 +5024,8 @@ struct Index {
     if (nextOffset < -88) {
       nextOffset = -88;
     }
-    if (nextOffset > 0) {
-      nextOffset = 0;
+    if (nextOffset > 162) {
+      nextOffset = 162;
     }
     this.reminderSwipeOffset = nextOffset;
   }
@@ -4700,6 +5037,8 @@ struct Index {
     }
     if (this.reminderSwipeOffset <= -44) {
       this.reminderSwipeOffset = -88;
+    } else if (this.reminderSwipeOffset >= 56) {
+      this.reminderSwipeOffset = 162;
     } else {
       this.revealedReminderKey = '';
       this.reminderSwipeOffset = 0;
@@ -4783,6 +5122,13 @@ struct Index {
       return;
     }
 
+    const duplicateName = this.findDuplicatePendingReminderMedicineName();
+    if (duplicateName.length > 0) {
+      this.duplicateReminderMessage = duplicateName + ' already exists in your reminder schedule.';
+      this.showDuplicateReminderDialog = true;
+      return;
+    }
+
     const addedItems: ReminderItem[] = [];
     for (let index = 0; index < this.pendingReminderPlanItems.length; index++) {
       const item = this.pendingReminderPlanItems[index];
@@ -4823,6 +5169,25 @@ struct Index {
     this.pendingReminderPlanWarning = '';
     this.pendingReminderPlanDuration = '';
     this.reminderAlarmStatus = 'Generated reminder plan was not added.';
+  }
+
+  private findDuplicatePendingReminderMedicineName(): string {
+    for (let pendingIndex = 0; pendingIndex < this.pendingReminderPlanItems.length; pendingIndex++) {
+      const pendingName = this.normalizeMedicineReminderName(this.pendingReminderPlanItems[pendingIndex].medicineName);
+      if (pendingName.length === 0) {
+        continue;
+      }
+      for (let index = 0; index < this.reminderPlanItems.length; index++) {
+        if (this.normalizeMedicineReminderName(this.reminderPlanItems[index].medicineName) === pendingName) {
+          return this.pendingReminderPlanItems[pendingIndex].medicineName.trim();
+        }
+      }
+    }
+    return '';
+  }
+
+  private normalizeMedicineReminderName(value: string): string {
+    return this.normalizeMatchText(value).replace(/\s+/g, ' ').trim();
   }
 
   private setInAppMedicineReminders(successMessage: string): void {
@@ -4968,6 +5333,19 @@ struct Index {
     this.activeReminderAlertKey = '';
     promptAction.showToast({
       message: 'Reminder confirmed.',
+      duration: 1600
+    });
+  }
+
+  private cancelActiveReminderAlert(): void {
+    this.reminderNotificationService.stopActiveReminderAlert();
+    this.activeReminderAlertVisible = false;
+    this.activeReminderAlertMedicine = '';
+    this.activeReminderAlertDose = '';
+    this.activeReminderAlertTime = '';
+    this.activeReminderAlertKey = '';
+    promptAction.showToast({
+      message: 'Reminder cancelled.',
       duration: 1600
     });
   }
