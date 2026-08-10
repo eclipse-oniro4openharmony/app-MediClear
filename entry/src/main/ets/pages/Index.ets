@@ -1,11 +1,14 @@
 import { common } from '@kit.AbilityKit';
 import promptAction from '@ohos.promptAction';
 import { preferences } from '@kit.ArkData';
+import { picker } from '@kit.CoreFileKit';
+import fs from '@ohos.file.fs';
 import { MediClearDatabase } from '../database/MediClearDatabase';
 import { RplMedicineDAO } from '../database/RplMedicineDAO';
 import { RplMedicineRecord } from '../database/RplMedicineRecord';
 import { CoreVisionOcrService } from '../services/CoreVisionOcrService';
 import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
+import { MedicineReminderNotificationService } from '../services/MedicineReminderNotificationService';
 import {
   BackendService,
   BackendChatResponse,
@@ -157,6 +160,18 @@ class ReminderCalendarWeek {
   }
 }
 
+class ReminderAlertTarget {
+  item: ReminderItem;
+  when: Date;
+  dateKey: string;
+
+  constructor(item: ReminderItem, when: Date, dateKey: string) {
+    this.item = item;
+    this.when = when;
+    this.dateKey = dateKey;
+  }
+}
+
 class ParsedMedicineGuide {
   name: string = '';
   subtitle: string = '';
@@ -261,15 +276,23 @@ struct Index {
   @State revealedReminderKey: string = '';
   @State reminderSwipeOffset: number = 0;
   @State reminderSwipeStartOffset: number = 0;
+  @State activeReminderAlertVisible: boolean = false;
+  @State activeReminderAlertMedicine: string = '';
+  @State activeReminderAlertDose: string = '';
+  @State activeReminderAlertTime: string = '';
+  @State activeReminderAlertKey: string = '';
+  @State confirmedReminderAlertKey: string = '';
   @State pendingReminderPlanItems: ReminderItem[] = [];
   @State pendingReminderPlanSummary: string = '';
   @State pendingReminderPlanWarning: string = '';
   @State pendingReminderPlanDuration: string = '';
   @State medicines: MedicineRecord[] = [];
+  @State homeRecentExpanded: boolean = false;
   @State historySearchQuery: string = '';
   @State showHistoryDetail: boolean = false;
   @State selectedHistoryKey: string = '';
   @State historyDetailStatus: string = '';
+  @State settingsDetailPage: string = '';
 
   private sexOptions: SelectOption[] = [
     { value: 'Male' },
@@ -319,6 +342,11 @@ struct Index {
   private reminderPreferencesName: string = 'mediclear_reminders';
   private reminderPreferencesKey: string = 'medicine_reminders';
   private chatMarkdownController: MarkdownController = new MarkdownController();
+  private reminderNotificationService: MedicineReminderNotificationService =
+    MedicineReminderNotificationService.getInstance();
+  private reminderAlertTimer: number = -1;
+  private reminderPermissionRequested: boolean = false;
+  private lastReminderAlertKey: string = '';
 
   aboutToAppear(): void {
     const now = new Date();
@@ -340,8 +368,15 @@ struct Index {
       .setUlPointColor('#1F2A44')
       .setUlPointSize(4);
     this.chatMarkdownController.setBlockSpacing(6);
+    this.reminderNotificationService.setContext(getContext(this) as common.UIAbilityContext);
+    this.requestReminderNotificationPermissionOnce();
     this.loadMedicineHistory();
     this.loadMedicineReminders();
+  }
+
+  aboutToDisappear(): void {
+    this.clearReminderAlertTimer();
+    this.reminderNotificationService.stopActiveReminderAlert();
   }
 
   build() {
@@ -395,10 +430,273 @@ struct Index {
       if (this.showReminderTimeDialog) {
         this.ReminderTimeDialog()
       }
+
+      if (this.activeReminderAlertVisible) {
+        this.ActiveReminderAlertDialog()
+      }
+
+      if (this.showHistoryDetail) {
+        this.HistoryDetailDialog(this.selectedHistoryRecord())
+      }
     }
     .width('100%')
     .height('100%')
     .backgroundColor('#F6FBFC')
+  }
+
+  private handleSectionAction(actionKey: string): void {
+    if (actionKey === 'history') {
+      this.homeRecentExpanded = !this.homeRecentExpanded;
+    }
+  }
+
+  private openSettingsDetail(actionKey: string): void {
+    if (actionKey.length === 0) {
+      return;
+    }
+    this.settingsDetailPage = actionKey;
+  }
+
+  private settingsDetailTitle(): string {
+    if (this.settingsDetailPage === 'help') {
+      return 'Help & Support';
+    }
+    if (this.settingsDetailPage === 'about') {
+      return 'About MediClear';
+    }
+    return 'Export History';
+  }
+
+  private homeRecentMedicines(): MedicineRecord[] {
+    if (this.homeRecentExpanded) {
+      return this.medicines;
+    }
+    const items: MedicineRecord[] = [];
+    if (this.medicines.length > 0) {
+      items.push(this.medicines[0]);
+    }
+    return items;
+  }
+
+  private async exportMedicineHistoryPdf(): Promise<void> {
+    if (this.medicines.length === 0) {
+      promptAction.showToast({
+        message: 'No medicine history to export.',
+        duration: 1800
+      });
+      return;
+    }
+
+    try {
+      const fileName = 'MediClear_medicine_history_' + this.exportDateStamp() + '.pdf';
+      const sourcePath = (getContext(this) as common.UIAbilityContext).filesDir + '/' + fileName;
+      this.writeBytesToFile(sourcePath, this.buildMedicineHistoryPdfBytes());
+
+      const options = new picker.DocumentSaveOptions();
+      options.newFileNames = [fileName];
+      const documentPicker = new picker.DocumentViewPicker();
+      const savedUris = await documentPicker.save(options);
+      if (!savedUris || savedUris.length === 0) {
+        promptAction.showToast({
+          message: 'PDF export cancelled.',
+          duration: 1800
+        });
+        return;
+      }
+
+      this.copyFile(sourcePath, savedUris[0]);
+      promptAction.showToast({
+        message: 'Medicine history PDF exported.',
+        duration: 2200
+      });
+    } catch (error) {
+      console.error('[MediClearExport] PDF export failed: ' + JSON.stringify(error));
+      promptAction.showToast({
+        message: 'PDF export failed.',
+        duration: 2200
+      });
+    }
+  }
+
+  private buildMedicineHistoryPdfBytes(): number[] {
+    const lines: string[] = [];
+    lines.push('MediClear Medicine History');
+    lines.push('Exported: ' + this.exportDateStamp());
+    lines.push('Total medicines: ' + this.medicines.length.toString());
+    lines.push('');
+    for (let index = 0; index < this.medicines.length; index++) {
+      const item = this.medicines[index];
+      lines.push((index + 1).toString() + '. ' + item.name);
+      if (item.date.length > 0) {
+        lines.push('Searched: ' + item.date);
+      }
+      this.appendPdfWrappedLines(lines, 'Active ingredient: ', this.cleanActiveIngredient(item.activeIngredient));
+      this.appendPdfWrappedLines(lines, 'How to take: ', item.howToTake);
+      lines.push('');
+    }
+    return this.simplePdfBytes(lines);
+  }
+
+  private simplePdfBytes(lines: string[]): number[] {
+    const objects: string[] = [];
+    const pageLineCount = 50;
+    const pageCount = Math.max(1, Math.ceil(lines.length / pageLineCount));
+    const pageObjectIds: number[] = [];
+    const contentObjectIds: number[] = [];
+    for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+      pageObjectIds.push(4 + pageIndex * 2);
+      contentObjectIds.push(5 + pageIndex * 2);
+    }
+
+    let kids = '';
+    for (let index = 0; index < pageObjectIds.length; index++) {
+      kids += pageObjectIds[index].toString() + ' 0 R ';
+    }
+
+    objects.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+    objects.push('2 0 obj\n<< /Type /Pages /Kids [' + kids + '] /Count ' + pageCount.toString() + ' >>\nendobj\n');
+    objects.push('3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n');
+
+    for (let pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+      const start = pageIndex * pageLineCount;
+      const end = Math.min(start + pageLineCount, lines.length);
+      const pageLines: string[] = [];
+      for (let lineIndex = start; lineIndex < end; lineIndex++) {
+        pageLines.push(lines[lineIndex]);
+      }
+      const content = this.pdfContentStream(pageLines, pageIndex + 1, pageCount);
+      objects.push(pageObjectIds[pageIndex].toString() +
+        ' 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ' +
+        contentObjectIds[pageIndex].toString() + ' 0 R >>\nendobj\n');
+      objects.push(contentObjectIds[pageIndex].toString() + ' 0 obj\n<< /Length ' +
+        this.asciiBytes(content).length.toString() + ' >>\nstream\n' + content + '\nendstream\nendobj\n');
+    }
+
+    let pdf = '%PDF-1.4\n';
+    const offsets: number[] = [0];
+    for (let index = 0; index < objects.length; index++) {
+      offsets.push(this.asciiBytes(pdf).length);
+      pdf += objects[index];
+    }
+    const xrefOffset = this.asciiBytes(pdf).length;
+    pdf += 'xref\n0 ' + (objects.length + 1).toString() + '\n';
+    pdf += '0000000000 65535 f \n';
+    for (let index = 1; index < offsets.length; index++) {
+      pdf += offsets[index].toString().padStart(10, '0') + ' 00000 n \n';
+    }
+    pdf += 'trailer\n<< /Size ' + (objects.length + 1).toString() + ' /Root 1 0 R >>\nstartxref\n' +
+      xrefOffset.toString() + '\n%%EOF\n';
+    return this.asciiBytes(pdf);
+  }
+
+  private pdfContentStream(lines: string[], pageNumber: number, pageCount: number): string {
+    let content = 'BT\n/F1 12 Tf\n50 800 Td\n14 TL\n';
+    for (let index = 0; index < lines.length; index++) {
+      content += '(' + this.escapePdfText(lines[index]) + ') Tj\nT*\n';
+    }
+    content += 'ET\n';
+    content += 'BT\n/F1 10 Tf\n270 30 Td\n(Page ' + pageNumber.toString() + ' of ' + pageCount.toString() +
+      ') Tj\nET';
+    return content;
+  }
+
+  private escapePdfText(value: string): string {
+    let output = '';
+    const clean = value.replace(/\r/g, ' ').replace(/\n/g, ' ');
+    for (let index = 0; index < clean.length; index++) {
+      const code = clean.charCodeAt(index);
+      if (code === 40 || code === 41 || code === 92) {
+        output += '\\' + clean[index];
+      } else if (code >= 32 && code <= 126) {
+        output += clean[index];
+      } else {
+        output += '?';
+      }
+    }
+    return output;
+  }
+
+  private appendPdfWrappedLines(lines: string[], label: string, value: string): void {
+    const cleaned = value.trim();
+    if (cleaned.length === 0) {
+      return;
+    }
+    const normalized = cleaned.replace(/\r/g, '\n');
+    const chunks = normalized.split('\n');
+    let firstLine = true;
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex].trim();
+      if (chunk.length === 0) {
+        continue;
+      }
+      const wrapped = this.wrapPdfLine((firstLine ? label : '  ') + chunk, 86);
+      for (let lineIndex = 0; lineIndex < wrapped.length; lineIndex++) {
+        lines.push(wrapped[lineIndex]);
+      }
+      firstLine = false;
+    }
+  }
+
+  private wrapPdfLine(value: string, maxLength: number): string[] {
+    const words = value.split(' ');
+    const wrapped: string[] = [];
+    let current = '';
+    for (let index = 0; index < words.length; index++) {
+      const word = words[index];
+      if (word.length === 0) {
+        continue;
+      }
+      if (current.length === 0) {
+        current = word;
+      } else if (current.length + word.length + 1 <= maxLength) {
+        current += ' ' + word;
+      } else {
+        wrapped.push(current);
+        current = word;
+      }
+    }
+    if (current.length > 0) {
+      wrapped.push(current);
+    }
+    return wrapped;
+  }
+
+  private asciiBytes(value: string): number[] {
+    const bytes: number[] = [];
+    for (let index = 0; index < value.length; index++) {
+      bytes.push(value.charCodeAt(index) & 0xFF);
+    }
+    return bytes;
+  }
+
+  private writeBytesToFile(path: string, bytes: number[]): void {
+    const file = fs.openSync(path, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+    try {
+      fs.writeSync(file.fd, new Uint8Array(bytes).buffer);
+    } finally {
+      fs.closeSync(file.fd);
+    }
+  }
+
+  private copyFile(sourcePath: string, targetUri: string): void {
+    const source = fs.openSync(sourcePath, fs.OpenMode.READ_ONLY);
+    const target = fs.openSync(targetUri, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+    try {
+      fs.copyFileSync(source.fd, target.fd);
+    } finally {
+      fs.closeSync(source.fd);
+      fs.closeSync(target.fd);
+    }
+  }
+
+  private exportDateStamp(): string {
+    const now = new Date();
+    const year = now.getFullYear().toString();
+    const month = (now.getMonth() + 1).toString().padStart(2, '0');
+    const day = now.getDate().toString().padStart(2, '0');
+    const hour = now.getHours().toString().padStart(2, '0');
+    const minute = now.getMinutes().toString().padStart(2, '0');
+    return year + month + day + '_' + hour + minute;
   }
 
   private contentTopPadding(): number {
@@ -420,16 +718,6 @@ struct Index {
       }
       .layoutWeight(1)
       .alignItems(VerticalAlign.Center)
-
-      Stack() {
-        Image($r('app.media.bi_bell'))
-          .width(24)
-          .height(24)
-          .fillColor('#294159')
-      }
-      .width(44)
-      .height(44)
-      .borderRadius(22)
     }
     .width('100%')
     .height(64)
@@ -467,9 +755,14 @@ struct Index {
       .shadow({ radius: 18, color: '#11006472', offsetY: 8 })
 
       this.UploadAnalysisPanel()
-      this.SectionTitle('Recent Medicine', 'See all')
+      this.SectionTitle('Recent Medicine', this.homeRecentExpanded ? 'Collapse' : 'See all', 'history')
       if (this.medicines.length > 0) {
-        this.MedicineMiniCard(this.medicines[0])
+        Column({ space: 10 }) {
+          ForEach(this.homeRecentMedicines(), (item: MedicineRecord) => {
+            this.MedicineMiniCard(item)
+          }, (item: MedicineRecord) => item.productId.length > 0 ? item.productId : item.name)
+        }
+        .width('100%')
       } else {
         this.EmptyRecentMedicineCard()
       }
@@ -1127,6 +1420,66 @@ struct Index {
   }
 
   @Builder
+  ActiveReminderAlertDialog() {
+    Stack() {
+      Rect()
+        .fill('#66000000')
+        .width('100%')
+        .height('100%')
+      Column({ space: 16 }) {
+        this.IconBubble($r('app.media.bi_bell'), '#FFF4C2', '#B45309')
+        Column({ space: 6 }) {
+          Text('Medicine time')
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#111827')
+            .textAlign(TextAlign.Center)
+            .width('100%')
+          Text(this.activeReminderAlertTime + ' · ' + this.activeReminderAlertMedicine)
+            .fontSize(15)
+            .fontColor('#42566F')
+            .textAlign(TextAlign.Center)
+            .maxLines(2)
+            .width('100%')
+        }
+        .width('100%')
+
+        Text(this.activeReminderAlertDose)
+          .fontSize(14)
+          .fontColor('#263244')
+          .lineHeight(20)
+          .textAlign(TextAlign.Center)
+          .width('100%')
+          .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+          .backgroundColor('#F8FCFC')
+          .border({ width: 1, color: '#DCEBED' })
+          .borderRadius(10)
+
+        Button('Confirm')
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor(Color.White)
+          .backgroundColor('#009F9A')
+          .borderRadius(10)
+          .height(48)
+          .width('100%')
+          .onClick(() => {
+            this.confirmActiveReminderAlert();
+          })
+      }
+      .width('86%')
+      .constraintSize({ maxWidth: 420 })
+      .padding(18)
+      .backgroundColor(Color.White)
+      .border({ width: 1, color: '#FBBF24' })
+      .borderRadius(16)
+      .shadow({ radius: 24, color: '#33000000', offsetY: 8 })
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
   ReminderCalendar() {
     Column({ space: 12 }) {
       Row() {
@@ -1375,62 +1728,84 @@ struct Index {
 
   @Builder
   HistoryView() {
-    if (this.showHistoryDetail) {
-      this.HistoryDetailView(this.selectedHistoryRecord())
-    } else {
-      Column({ space: 16 }) {
-        this.PageTop('Medicine History')
-        TextInput({ placeholder: 'Search medicines', text: this.historySearchQuery })
-            .fontSize(14)
-            .fontColor('#111827')
-            .placeholderColor('#7A8797')
-            .padding({ left: 14, right: 14 })
-            .height(44)
-            .backgroundColor(Color.White)
-            .borderRadius(10)
-            .border({ width: 1, color: '#E4EAF0' })
-            .width('100%')
-            .onChange((value: string) => {
-              this.historySearchQuery = value;
-            })
-
-        Text('Recent Entries')
-          .fontSize(16)
-          .fontWeight(FontWeight.Bold)
+    Column({ space: 16 }) {
+      this.PageTop('Medicine History')
+      TextInput({ placeholder: 'Search medicines', text: this.historySearchQuery })
+          .fontSize(14)
           .fontColor('#111827')
+          .placeholderColor('#7A8797')
+          .padding({ left: 14, right: 14 })
+          .height(44)
+          .backgroundColor(Color.White)
+          .borderRadius(10)
+          .border({ width: 1, color: '#E4EAF0' })
           .width('100%')
+          .onChange((value: string) => {
+            this.historySearchQuery = value;
+          })
 
-        if (this.filteredMedicineHistory().length > 0) {
-          Column({ space: 0 }) {
-            ForEach(this.filteredMedicineHistory(), (item: MedicineRecord) => {
-              this.HistoryRow(item)
-            }, (item: MedicineRecord) => item.productId.length > 0 ? item.productId : item.name)
-          }
-          .backgroundColor(Color.White)
-          .borderRadius(12)
-          .clip(true)
-        } else {
-          Column({ space: 10 }) {
-            this.IconBubble($r('app.media.bi_clock_history'), '#F0EDFF', '#6554D9')
-            Text('No medicine history yet')
-              .fontSize(16)
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#111827')
-            Text(this.medicines.length > 0 ? 'No medicines match your search.' :
-              'Take a photo or upload a medicine guide. Matched medicines will appear here automatically.')
-              .fontSize(13)
-              .fontColor('#536175')
-              .lineHeight(18)
-              .textAlign(TextAlign.Center)
-          }
-          .padding(18)
-          .backgroundColor(Color.White)
-          .borderRadius(12)
-          .width('100%')
+      Text('Recent Entries')
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111827')
+        .width('100%')
+
+      if (this.filteredMedicineHistory().length > 0) {
+        Column({ space: 0 }) {
+          ForEach(this.filteredMedicineHistory(), (item: MedicineRecord) => {
+            this.HistoryRow(item)
+          }, (item: MedicineRecord) => item.productId.length > 0 ? item.productId : item.name)
         }
+        .backgroundColor(Color.White)
+        .borderRadius(12)
+        .clip(true)
+      } else {
+        Column({ space: 10 }) {
+          this.IconBubble($r('app.media.bi_clock_history'), '#F0EDFF', '#6554D9')
+          Text('No medicine history yet')
+            .fontSize(16)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#111827')
+          Text(this.medicines.length > 0 ? 'No medicines match your search.' :
+            'Take a photo or upload a medicine guide. Matched medicines will appear here automatically.')
+            .fontSize(13)
+            .fontColor('#536175')
+            .lineHeight(18)
+            .textAlign(TextAlign.Center)
+        }
+        .padding(18)
+        .backgroundColor(Color.White)
+        .borderRadius(12)
+        .width('100%')
       }
-      .width('100%')
     }
+    .width('100%')
+  }
+
+  @Builder
+  HistoryDetailDialog(record: MedicineRecord) {
+    Stack() {
+      Rect()
+        .fill('#66000000')
+        .width('100%')
+        .height('100%')
+      Column() {
+        Scroll() {
+          this.HistoryDetailView(record)
+        }
+        .scrollBar(BarState.Off)
+        .width('100%')
+        .constraintSize({ maxHeight: '82%' })
+      }
+      .width('88%')
+      .constraintSize({ maxWidth: 430 })
+      .padding(16)
+      .backgroundColor('#F6FBFC')
+      .borderRadius(16)
+      .shadow({ radius: 24, color: '#33000000', offsetY: 8 })
+    }
+    .width('100%')
+    .height('100%')
   }
 
   @Builder
@@ -1832,28 +2207,170 @@ struct Index {
 
   @Builder
   ProfileView() {
+    if (this.settingsDetailPage.length > 0) {
+      this.SettingsDetailView()
+    } else {
+      Column({ space: 16 }) {
+        this.PageTop('Settings')
+        Text('Settings')
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
+          .width('100%')
+
+        Column({ space: 0 }) {
+          this.AutoReminderSettingRow()
+          this.SettingRow('Export History', '', $r('app.media.bi_box_arrow_up'), '#F1EDFF', '#6554D9',
+            'export')
+        }
+        .backgroundColor(Color.White)
+        .borderRadius(12)
+        .clip(true)
+
+        this.SettingPanel('Help & Support', $r('app.media.bi_question_circle'), '#EAF2FF', '#1767C5', 'help')
+        this.SettingPanel('About MediClear', $r('app.media.bi_info_circle'), '#E8F8F6', '#008A88', 'about')
+        this.NoteCard()
+      }
+      .width('100%')
+    }
+  }
+
+  @Builder
+  SettingsDetailView() {
     Column({ space: 16 }) {
-      this.PageTop('Settings')
-      Text('Settings')
-        .fontSize(16)
+      this.SettingsDetailTop(this.settingsDetailTitle())
+      if (this.settingsDetailPage === 'help') {
+        this.HelpSupportView()
+      } else if (this.settingsDetailPage === 'about') {
+        this.AboutMediClearView()
+      } else {
+        this.ExportHistoryView()
+      }
+    }
+    .width('100%')
+  }
+
+  @Builder
+  SettingsDetailTop(title: string) {
+    Row() {
+      Image($r('app.media.bi_chevron_left'))
+        .width(22)
+        .height(22)
+        .fillColor('#20324A')
+        .width(36)
+        .onClick(() => {
+          this.settingsDetailPage = '';
+        })
+      Text(title)
+        .fontSize(19)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111827')
+        .textAlign(TextAlign.Center)
+        .layoutWeight(1)
+      this.LogoMark(30)
+    }
+    .width('100%')
+    .height(42)
+  }
+
+  @Builder
+  HelpSupportView() {
+    Column({ space: 12 }) {
+      this.SettingsInfoCard('How does MediClear create reminders?',
+        'MediClear reads the captured medicine guide, extracts usage instructions, then asks you to confirm before adding reminders.')
+      this.SettingsInfoCard('Why do I need to confirm a reminder?',
+        'Leaflets can be incomplete or difficult to parse. Confirmation keeps the final schedule under your control.')
+      this.SettingsInfoCard('Can MediClear tell me whether I should take a medicine?',
+        'No. MediClear summarizes leaflet information and checks obvious age/allergy warnings, but it does not prescribe or diagnose.')
+      this.SettingsInfoCard('Why are some reminders only active while the app is running?',
+        'System alarm access is still pending approval. Current notification and vibration reminders work while MediClear is active.')
+      this.SettingsInfoCard('What should I do if the extracted dose looks wrong?',
+        'Do not use that reminder. Check the official leaflet or ask a pharmacist or doctor before taking medicine.')
+    }
+    .width('100%')
+  }
+
+  @Builder
+  AboutMediClearView() {
+    Column({ space: 12 }) {
+      this.SettingsHeroCard('MediClear',
+        'A medicine guide companion for scanning leaflets, reviewing usage information, and managing reminder schedules.')
+      this.SettingsInfoCard('Core features',
+        'Medicine guide analysis, history, leaflet-backed chat answers, auto-generated reminder plans, schedule calendar, and medicine-time alerts.')
+      this.SettingsInfoCard('Safety boundary',
+        'MediClear does not diagnose, prescribe, replace professional advice, or guarantee that OCR/leaflet extraction is complete.')
+      this.SettingsInfoCard('Version',
+        'Development build for HarmonyOS/OpenHarmony.')
+      this.NoteCard()
+    }
+    .width('100%')
+  }
+
+  @Builder
+  ExportHistoryView() {
+    Column({ space: 12 }) {
+      this.SettingsHeroCard('Export History',
+        'Export every searched medicine as a PDF file that you can save to your device.')
+      this.SettingsInfoCard('Current history count',
+        this.medicines.length.toString() + (this.medicines.length === 1 ? ' medicine saved.' : ' medicines saved.'))
+      Button('Download PDF')
+        .fontSize(15)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(Color.White)
+        .backgroundColor('#6554D9')
+        .borderRadius(10)
+        .height(48)
+        .width('100%')
+        .onClick(() => {
+          this.exportMedicineHistoryPdf();
+        })
+    }
+    .width('100%')
+  }
+
+  @Builder
+  SettingsHeroCard(title: string, body: string) {
+    Row({ space: 12 }) {
+      this.LogoMark(34)
+      Column({ space: 5 }) {
+        Text(title)
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
+          .width('100%')
+        Text(body)
+          .fontSize(13)
+          .fontColor('#42566F')
+          .lineHeight(18)
+          .width('100%')
+      }
+      .layoutWeight(1)
+    }
+    .padding(14)
+    .backgroundColor(Color.White)
+    .borderRadius(12)
+    .shadow({ radius: 10, color: '#10006472', offsetY: 4 })
+    .width('100%')
+  }
+
+  @Builder
+  SettingsInfoCard(title: string, body: string) {
+    Column({ space: 6 }) {
+      Text(title)
+        .fontSize(15)
         .fontWeight(FontWeight.Bold)
         .fontColor('#111827')
         .width('100%')
-
-      Column({ space: 0 }) {
-        this.AutoReminderSettingRow()
-        this.SettingRow('Reminder Notifications', 'On', $r('app.media.bi_bell'), '#EEF5FF', '#1767C5')
-        this.SettingRow('Data & Privacy', '', $r('app.media.bi_shield_heart'), '#E8F8F6', '#008A88')
-        this.SettingRow('Export History', '', $r('app.media.bi_box_arrow_up'), '#F1EDFF', '#6554D9')
-      }
-      .backgroundColor(Color.White)
-      .borderRadius(12)
-      .clip(true)
-
-      this.SettingPanel('Help & Support', $r('app.media.bi_question_circle'), '#EAF2FF', '#1767C5')
-      this.SettingPanel('About MediClear', $r('app.media.bi_info_circle'), '#E8F8F6', '#008A88')
-      this.NoteCard()
+      Text(body)
+        .fontSize(13)
+        .fontColor('#536175')
+        .lineHeight(18)
+        .width('100%')
     }
+    .padding(14)
+    .backgroundColor(Color.White)
+    .border({ width: 1, color: '#DCEBED' })
+    .borderRadius(12)
     .width('100%')
   }
 
@@ -1946,6 +2463,9 @@ struct Index {
         .opacity(0.88)
         .scale({ x: 0.98, y: 0.98 })
       }
+    })
+    .onClick(() => {
+      this.openHistoryMedicineDetail(record);
     })
   }
 
@@ -2192,15 +2712,15 @@ struct Index {
             .maxLines(2)
             .layoutWeight(1)
           Stack() {
-            Image($r('app.media.bi_bell'))
+            Image(this.isReminderConfirmed(item) ? $r('app.media.bi_check_circle_fill') : $r('app.media.bi_bell'))
               .width(16)
               .height(16)
-              .fillColor('#009F9A')
+              .fillColor(this.isReminderConfirmed(item) ? '#0EA77B' : '#009F9A')
           }
           .width(30)
           .height(30)
-          .backgroundColor('#F8FCFC')
-          .border({ width: 1, color: '#E4EAF0' })
+          .backgroundColor(this.isReminderConfirmed(item) ? '#E8F8F0' : '#F8FCFC')
+          .border({ width: 1, color: this.isReminderConfirmed(item) ? '#BCE9D1' : '#E4EAF0' })
           .borderRadius(15)
         }
         .width('100%')
@@ -2375,7 +2895,7 @@ struct Index {
   }
 
   @Builder
-  SectionTitle(title: string, action: string) {
+  SectionTitle(title: string, action: string, actionKey: string = '') {
     Row() {
       Text(title)
         .fontSize(17)
@@ -2386,6 +2906,9 @@ struct Index {
         .fontSize(13)
         .fontWeight(FontWeight.Bold)
         .fontColor('#008A88')
+        .onClick(() => {
+          this.handleSectionAction(actionKey);
+        })
     }
     .width('100%')
   }
@@ -2464,7 +2987,8 @@ struct Index {
   }
 
   @Builder
-  SettingRow(label: string, value: string, icon: Resource, background: string, tint: ResourceColor) {
+  SettingRow(label: string, value: string, icon: Resource, background: string, tint: ResourceColor,
+    actionKey: string = '') {
     Row() {
       this.SettingIcon(icon, background, tint)
       Text(label)
@@ -2486,10 +3010,13 @@ struct Index {
         .opacity(0.86)
       }
     })
+    .onClick(() => {
+      this.openSettingsDetail(actionKey);
+    })
   }
 
   @Builder
-  SettingPanel(label: string, icon: Resource, background: string, tint: ResourceColor) {
+  SettingPanel(label: string, icon: Resource, background: string, tint: ResourceColor, actionKey: string = '') {
     Row() {
       this.SettingIcon(icon, background, tint)
       Text(label)
@@ -2507,6 +3034,9 @@ struct Index {
         .opacity(0.86)
         .scale({ x: 0.98, y: 0.98 })
       }
+    })
+    .onClick(() => {
+      this.openSettingsDetail(actionKey);
     })
   }
 
@@ -3388,6 +3918,8 @@ struct Index {
       this.updateReminderCalendar();
       if (records.length > 0) {
         this.setInAppMedicineReminders('Loaded saved reminder schedule.');
+      } else {
+        this.scheduleNextMedicineReminderAlert();
       }
     } catch (err) {
       console.error('[MediClearReminder] load failed: ' + JSON.stringify(err));
@@ -4180,6 +4712,10 @@ struct Index {
       item.medicineName;
   }
 
+  private isReminderConfirmed(item: ReminderItem): boolean {
+    return this.currentSelectedReminderDate() + '|' + this.reminderItemKey(item) === this.confirmedReminderAlertKey;
+  }
+
   private stageReminderPlanForConfirmation(plan: BackendReminderPlanResponse): void {
     this.reminderPlanStatus = plan.summary.length > 0 ? plan.summary : 'Reminder plan generated from official leaflet.';
     this.reminderPlanWarning = plan.warning;
@@ -4292,6 +4828,7 @@ struct Index {
   private setInAppMedicineReminders(successMessage: string): void {
     if (this.reminderPlanItems.length === 0) {
       this.reminderAlarmStatus = 'No reminder plan to schedule.';
+      this.clearReminderAlertTimer();
       return;
     }
 
@@ -4309,11 +4846,13 @@ struct Index {
 
     if (times.length === 0) {
       this.reminderAlarmStatus = 'No valid reminder times were generated.';
+      this.clearReminderAlertTimer();
       return;
     }
     this.reminderAlarmStatus = successMessage + ' Times: ' + times.join(', ') + '. Duration: ' +
       maxDurationDays.toString() + (maxDurationDays === 1 ? ' day' : ' days') +
-      '. System alarm integration is pending approval.';
+      '. In-app notification and vibration are active while MediClear is running.';
+    this.scheduleNextMedicineReminderAlert();
   }
 
   private buildReminderSummaryText(): string {
@@ -4328,6 +4867,109 @@ struct Index {
       lines.push(item.time + ' ' + item.label + ' - ' + item.dose + duration);
     }
     return lines.join('\n');
+  }
+
+  private requestReminderNotificationPermissionOnce(): void {
+    if (this.reminderPermissionRequested) {
+      return;
+    }
+    this.reminderPermissionRequested = true;
+    this.reminderNotificationService.requestNotificationPermission();
+  }
+
+  private clearReminderAlertTimer(): void {
+    if (this.reminderAlertTimer >= 0) {
+      clearTimeout(this.reminderAlertTimer);
+      this.reminderAlertTimer = -1;
+    }
+  }
+
+  private scheduleNextMedicineReminderAlert(): void {
+    this.clearReminderAlertTimer();
+    const next = this.nextMedicineReminderAlert();
+    if (next === null) {
+      return;
+    }
+
+    const delay = next.when.getTime() - new Date().getTime();
+    const boundedDelay = delay < 0 ? 0 : delay;
+    this.reminderAlertTimer = setTimeout(() => {
+      this.fireMedicineReminderAlert(next.item, next.dateKey);
+    }, boundedDelay);
+  }
+
+  private nextMedicineReminderAlert(): ReminderAlertTarget | null {
+    const now = new Date();
+    let bestItem: ReminderItem | null = null;
+    let bestDate: Date | null = null;
+    let bestDateKey = '';
+
+    for (let dayOffset = 0; dayOffset <= 370; dayOffset++) {
+      const date = this.addDays(now, dayOffset);
+      const dateKey = this.formatReminderDate(date);
+      const activeItems = this.reminderItemsForDate(dateKey);
+      for (let index = 0; index < activeItems.length; index++) {
+        const item = activeItems[index];
+        const minutes = this.reminderTimeMinutes(item.time);
+        if (minutes < 0 || minutes >= 1440) {
+          continue;
+        }
+        const targetDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(),
+          Math.floor(minutes / 60), minutes % 60, 0, 0);
+        if (targetDate.getTime() <= now.getTime()) {
+          continue;
+        }
+        if (bestDate === null || targetDate.getTime() < bestDate.getTime()) {
+          bestDate = targetDate;
+          bestItem = item;
+          bestDateKey = dateKey;
+        }
+      }
+      if (bestDate !== null) {
+        break;
+      }
+    }
+
+    if (bestItem === null || bestDate === null) {
+      return null;
+    }
+    return new ReminderAlertTarget(bestItem, bestDate, bestDateKey);
+  }
+
+  private fireMedicineReminderAlert(item: ReminderItem, dateKey: string): void {
+    const alertKey = dateKey + '|' + this.reminderItemKey(item);
+    if (alertKey !== this.lastReminderAlertKey) {
+      this.lastReminderAlertKey = alertKey;
+      this.activeReminderAlertVisible = true;
+      this.activeReminderAlertMedicine = this.reminderMedicineDisplayName(item);
+      this.activeReminderAlertDose = item.dose;
+      this.activeReminderAlertTime = item.time;
+      this.activeReminderAlertKey = alertKey;
+      this.reminderNotificationService.alertMedicineReminder({
+        medicineName: this.reminderMedicineDisplayName(item),
+        dose: item.dose,
+        time: item.time
+      });
+      promptAction.showToast({
+        message: 'Medicine reminder: ' + this.reminderMedicineDisplayName(item),
+        duration: 2200
+      });
+    }
+    this.scheduleNextMedicineReminderAlert();
+  }
+
+  private confirmActiveReminderAlert(): void {
+    this.reminderNotificationService.stopActiveReminderAlert();
+    this.activeReminderAlertVisible = false;
+    this.confirmedReminderAlertKey = this.activeReminderAlertKey;
+    this.activeReminderAlertMedicine = '';
+    this.activeReminderAlertDose = '';
+    this.activeReminderAlertTime = '';
+    this.activeReminderAlertKey = '';
+    promptAction.showToast({
+      message: 'Reminder confirmed.',
+      duration: 1600
+    });
   }
 
   private formatReminderPlanDuration(duration: string, howToTake: string): string {
