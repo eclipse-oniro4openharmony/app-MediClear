@@ -254,6 +254,13 @@ struct Index {
   @State currentReminderMonth: number = 0;
   @State reminderCalendarData: ReminderCalendarDay[] = [];
   @State reminderCalendarWeeks: ReminderCalendarWeek[] = [];
+  @State showReminderTimeDialog: boolean = false;
+  @State editingReminderIndex: number = -1;
+  @State editingReminderHour: number = 8;
+  @State editingReminderMinute: number = 30;
+  @State revealedReminderKey: string = '';
+  @State reminderSwipeOffset: number = 0;
+  @State reminderSwipeStartOffset: number = 0;
   @State pendingReminderPlanItems: ReminderItem[] = [];
   @State pendingReminderPlanSummary: string = '';
   @State pendingReminderPlanWarning: string = '';
@@ -383,6 +390,10 @@ struct Index {
 
       if (this.showReminderConfirmDialog) {
         this.ReminderConfirmDialog()
+      }
+
+      if (this.showReminderTimeDialog) {
+        this.ReminderTimeDialog()
       }
     }
     .width('100%')
@@ -1110,21 +1121,6 @@ struct Index {
       } else {
         this.EmptyReminderCard()
       }
-
-      Button('Edit Schedule')
-        .fontSize(15)
-        .fontColor('#007D83')
-        .backgroundColor('#F6FBFC')
-        .border({ width: 1, color: '#009F9A' })
-        .borderRadius(10)
-        .height(48)
-        .width('100%')
-        .stateStyles({
-          pressed: {
-            .opacity(0.82)
-            .scale({ x: 0.98, y: 0.98 })
-          }
-        })
 
     }
     .width('100%')
@@ -2124,6 +2120,51 @@ struct Index {
 
   @Builder
   ReminderCard(item: ReminderItem) {
+    Stack({ alignContent: Alignment.End }) {
+      Row() {
+        Blank()
+          .layoutWeight(1)
+        if (this.revealedReminderKey === this.reminderItemKey(item) || this.reminderCardSwipeOffset(item) < 0) {
+          Button('Delete')
+            .fontSize(13)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(Color.White)
+            .backgroundColor('#B42318')
+            .borderRadius(12)
+            .height(128)
+            .width(78)
+            .onClick(() => {
+              this.deleteReminderItem(item);
+            })
+        }
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+
+      Column() {
+        this.ReminderCardContent(item)
+      }
+      .width('100%')
+      .offset({ x: this.reminderCardSwipeOffset(item), y: 0 })
+      .animation({ duration: 160, curve: Curve.EaseOut })
+      .gesture(
+        PanGesture({ direction: PanDirection.Horizontal, distance: 5 })
+          .onActionStart(() => {
+            this.beginReminderSwipe(item);
+          })
+          .onActionUpdate((event: GestureEvent) => {
+            this.updateReminderSwipe(item, event.offsetX);
+          })
+          .onActionEnd(() => {
+            this.endReminderSwipe(item);
+          })
+      )
+    }
+    .width('100%')
+  }
+
+  @Builder
+  ReminderCardContent(item: ReminderItem) {
     Row({ space: 14 }) {
       Column({ space: 4 }) {
         Text(item.time)
@@ -2138,6 +2179,9 @@ struct Index {
       .backgroundColor(item.background)
       .border({ width: 1, color: item.tint })
       .borderRadius(12)
+      .onClick(() => {
+        this.startEditReminderTime(item);
+      })
 
       Column({ space: 7 }) {
         Row() {
@@ -2188,6 +2232,125 @@ struct Index {
     .backgroundColor(Color.White)
     .borderRadius(12)
     .shadow({ radius: 10, color: '#12006472', offsetY: 4 })
+  }
+
+  @Builder
+  ReminderTimeDialog() {
+    Stack() {
+      Rect()
+        .fill('#66000000')
+        .width('100%')
+        .height('100%')
+      Column({ space: 14 }) {
+        Row({ space: 10 }) {
+          this.IconBubble($r('app.media.bi_clock_history'), '#EEF5FF', '#1767C5')
+          Column({ space: 4 }) {
+            Text('Change Time')
+              .fontSize(18)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#111827')
+            Text(this.editingReminderName())
+              .fontSize(13)
+              .fontColor('#536175')
+              .maxLines(1)
+          }
+          .layoutWeight(1)
+        }
+        .width('100%')
+
+        Text(this.formatEditingReminderTime())
+          .fontSize(34)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#111827')
+          .textAlign(TextAlign.Center)
+          .width('100%')
+          .padding({ top: 6, bottom: 6 })
+          .backgroundColor('#F6FBFC')
+          .border({ width: 1, color: '#DCEBED' })
+          .borderRadius(12)
+
+        this.TimeAdjustRow('Hour', this.editingReminderHour, 'hour')
+        this.TimeAdjustRow('Minute', this.editingReminderMinute, 'minute')
+
+        Row({ space: 10 }) {
+          Button('Cancel')
+            .fontSize(15)
+            .fontColor('#263244')
+            .backgroundColor('#FFFFFF')
+            .border({ width: 1, color: '#D6DEE8' })
+            .borderRadius(10)
+            .height(46)
+            .layoutWeight(1)
+            .onClick(() => {
+              this.cancelReminderTimeEdit();
+            })
+          Button('Save Time')
+            .fontSize(15)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(Color.White)
+            .backgroundColor('#009F9A')
+            .borderRadius(10)
+            .height(46)
+            .layoutWeight(1)
+            .onClick(() => {
+              this.saveReminderTimeEdit();
+            })
+        }
+        .width('100%')
+      }
+      .width('88%')
+      .constraintSize({ maxWidth: 420 })
+      .padding(16)
+      .backgroundColor(Color.White)
+      .borderRadius(14)
+      .shadow({ radius: 24, color: '#33000000', offsetY: 8 })
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
+  TimeAdjustRow(label: string, value: number, field: string) {
+    Row({ space: 10 }) {
+      Text(label)
+        .fontSize(14)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#263244')
+        .width(64)
+      Button('-')
+        .fontSize(18)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#007D83')
+        .backgroundColor('#E8F8F6')
+        .borderRadius(10)
+        .width(44)
+        .height(42)
+        .onClick(() => {
+          this.adjustEditingReminderTime(field, -1);
+        })
+      Text(value.toString().padStart(2, '0'))
+        .fontSize(18)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#111827')
+        .textAlign(TextAlign.Center)
+        .layoutWeight(1)
+      Button('+')
+        .fontSize(18)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#007D83')
+        .backgroundColor('#E8F8F6')
+        .borderRadius(10)
+        .width(44)
+        .height(42)
+        .onClick(() => {
+          this.adjustEditingReminderTime(field, 1);
+        })
+    }
+    .padding(10)
+    .backgroundColor('#F8FCFC')
+    .border({ width: 1, color: '#DCEBED' })
+    .borderRadius(10)
+    .width('100%')
   }
 
   @Builder
@@ -3799,6 +3962,222 @@ struct Index {
       return now;
     }
     return new Date(now.getFullYear(), month - 1, day);
+  }
+
+  private startEditReminderTime(item: ReminderItem): void {
+    const index = this.findReminderItemIndex(item);
+    if (index < 0) {
+      promptAction.showToast({
+        message: 'Reminder not found.',
+        duration: 1800
+      });
+      return;
+    }
+    this.editingReminderIndex = index;
+    const minutes = this.reminderTimeMinutes(this.reminderPlanItems[index].time);
+    if (minutes >= 0 && minutes < 1440) {
+      this.editingReminderHour = Math.floor(minutes / 60);
+      this.editingReminderMinute = minutes % 60;
+    }
+    this.revealedReminderKey = '';
+    this.showReminderTimeDialog = true;
+  }
+
+  private cancelReminderTimeEdit(): void {
+    this.editingReminderIndex = -1;
+    this.showReminderTimeDialog = false;
+  }
+
+  private adjustEditingReminderTime(field: string, delta: number): void {
+    if (field === 'hour') {
+      let nextHour = this.editingReminderHour + delta;
+      if (nextHour < 0) {
+        nextHour = 23;
+      }
+      if (nextHour > 23) {
+        nextHour = 0;
+      }
+      this.editingReminderHour = nextHour;
+      return;
+    }
+
+    let nextMinute = this.editingReminderMinute + delta;
+    if (nextMinute < 0) {
+      nextMinute = 59;
+    }
+    if (nextMinute > 59) {
+      nextMinute = 0;
+    }
+    this.editingReminderMinute = nextMinute;
+  }
+
+  private formatEditingReminderTime(): string {
+    return this.editingReminderHour.toString().padStart(2, '0') + ':' +
+      this.editingReminderMinute.toString().padStart(2, '0');
+  }
+
+  private editingReminderName(): string {
+    if (this.editingReminderIndex >= 0 && this.editingReminderIndex < this.reminderPlanItems.length) {
+      return this.reminderMedicineDisplayName(this.reminderPlanItems[this.editingReminderIndex]);
+    }
+    return 'Medicine reminder';
+  }
+
+  private saveReminderTimeEdit(): void {
+    if (this.editingReminderIndex < 0 || this.editingReminderIndex >= this.reminderPlanItems.length) {
+      this.cancelReminderTimeEdit();
+      return;
+    }
+
+    const updatedItems: ReminderItem[] = [];
+    const newTime = this.formatEditingReminderTime();
+    for (let index = 0; index < this.reminderPlanItems.length; index++) {
+      const item = this.reminderPlanItems[index];
+      if (index === this.editingReminderIndex) {
+        updatedItems.push(new ReminderItem(
+          newTime,
+          item.label,
+          item.dose,
+          item.icon,
+          item.tint,
+          item.background,
+          item.source,
+          item.durationDays,
+          item.durationLabel,
+          item.startDate,
+          item.endDate,
+          item.medicineName
+        ));
+      } else {
+        updatedItems.push(item);
+      }
+    }
+
+    this.reminderPlanItems = updatedItems;
+    this.saveMedicineReminders();
+    this.updateReminderCalendar();
+    this.selectedReminderDayItems = this.reminderItemsForDate(this.currentSelectedReminderDate());
+    this.setInAppMedicineReminders('Reminder schedule updated.');
+    this.editingReminderIndex = -1;
+    this.revealedReminderKey = '';
+    this.showReminderTimeDialog = false;
+    promptAction.showToast({
+      message: 'Reminder time updated.',
+      duration: 1800
+    });
+  }
+
+  private deleteReminderItem(item: ReminderItem): void {
+    const deleteIndex = this.findReminderItemIndex(item);
+    if (deleteIndex < 0) {
+      promptAction.showToast({
+        message: 'Reminder not found.',
+        duration: 1800
+      });
+      return;
+    }
+
+    const updatedItems: ReminderItem[] = [];
+    for (let index = 0; index < this.reminderPlanItems.length; index++) {
+      if (index !== deleteIndex) {
+        updatedItems.push(this.reminderPlanItems[index]);
+      }
+    }
+    this.reminderPlanItems = updatedItems;
+    this.saveMedicineReminders();
+    this.updateReminderCalendar();
+    this.selectedReminderDayItems = this.reminderItemsForDate(this.currentSelectedReminderDate());
+    this.setInAppMedicineReminders('Reminder schedule updated.');
+    this.editingReminderIndex = -1;
+    this.revealedReminderKey = '';
+    this.showReminderTimeDialog = false;
+    this.reminderSwipeOffset = 0;
+    this.reminderSwipeStartOffset = 0;
+    promptAction.showToast({
+      message: 'Reminder deleted.',
+      duration: 1800
+    });
+  }
+
+  private findReminderItemIndex(target: ReminderItem): number {
+    for (let index = 0; index < this.reminderPlanItems.length; index++) {
+      if (this.reminderPlanItems[index] === target) {
+        return index;
+      }
+    }
+
+    for (let index = 0; index < this.reminderPlanItems.length; index++) {
+      const item = this.reminderPlanItems[index];
+      if (item.time === target.time &&
+        item.label === target.label &&
+        item.dose === target.dose &&
+        item.startDate === target.startDate &&
+        item.endDate === target.endDate &&
+        item.medicineName === target.medicineName &&
+        item.source === target.source) {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  private isEditingReminderItem(item: ReminderItem): boolean {
+    const index = this.findReminderItemIndex(item);
+    return index >= 0 && index === this.editingReminderIndex;
+  }
+
+  private reminderCardSwipeOffset(item: ReminderItem): number {
+    if (this.revealedReminderKey === this.reminderItemKey(item)) {
+      return this.reminderSwipeOffset;
+    }
+    return 0;
+  }
+
+  private beginReminderSwipe(item: ReminderItem): void {
+    const key = this.reminderItemKey(item);
+    if (this.revealedReminderKey === key) {
+      this.reminderSwipeStartOffset = this.reminderSwipeOffset;
+    } else {
+      this.revealedReminderKey = key;
+      this.reminderSwipeOffset = 0;
+      this.reminderSwipeStartOffset = 0;
+    }
+  }
+
+  private updateReminderSwipe(item: ReminderItem, offsetX: number): void {
+    const key = this.reminderItemKey(item);
+    if (this.revealedReminderKey !== key) {
+      this.revealedReminderKey = key;
+      this.reminderSwipeStartOffset = 0;
+    }
+
+    let nextOffset = this.reminderSwipeStartOffset + offsetX;
+    if (nextOffset < -88) {
+      nextOffset = -88;
+    }
+    if (nextOffset > 0) {
+      nextOffset = 0;
+    }
+    this.reminderSwipeOffset = nextOffset;
+  }
+
+  private endReminderSwipe(item: ReminderItem): void {
+    const key = this.reminderItemKey(item);
+    if (this.revealedReminderKey !== key) {
+      return;
+    }
+    if (this.reminderSwipeOffset <= -44) {
+      this.reminderSwipeOffset = -88;
+    } else {
+      this.revealedReminderKey = '';
+      this.reminderSwipeOffset = 0;
+    }
+    this.reminderSwipeStartOffset = this.reminderSwipeOffset;
+  }
+
+  private reminderItemKey(item: ReminderItem): string {
+    return item.time + '|' + item.label + '|' + item.dose + '|' + item.startDate + '|' + item.endDate + '|' +
+      item.medicineName;
   }
 
   private stageReminderPlanForConfirmation(plan: BackendReminderPlanResponse): void {
