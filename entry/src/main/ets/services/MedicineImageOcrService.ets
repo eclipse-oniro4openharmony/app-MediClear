@@ -86,7 +86,7 @@ export class MedicineImageOcrService {
       });
 
       if (response.responseCode !== 200) {
-        let errorMessage = 'Cloud OCR request failed: ' + response.responseCode.toString();
+        let errorMessage = 'Local OCR request failed: ' + response.responseCode.toString();
         try {
           const errorResult = JSON.parse(response.result.toString()) as MedicineImageOcrErrorResponse;
           if (typeof errorResult.error === 'string' && errorResult.error.length > 0) {
