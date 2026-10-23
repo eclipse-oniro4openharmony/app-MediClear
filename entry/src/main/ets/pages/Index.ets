@@ -6,7 +6,7 @@ import fs from '@ohos.file.fs';
 import { MediClearDatabase } from '../database/MediClearDatabase';
 import { RplMedicineDAO } from '../database/RplMedicineDAO';
 import { RplMedicineRecord } from '../database/RplMedicineRecord';
-import { CoreVisionOcrService } from '../services/CoreVisionOcrService';
+import { MedicineImageOcrService } from '../services/MedicineImageOcrService';
 import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
 import { MedicineReminderNotificationService } from '../services/MedicineReminderNotificationService';
 import {
@@ -3655,7 +3655,7 @@ struct Index {
     try {
       console.info('[MediClearOCR] start OCR sourceType=' + sourceType + ' path=' + guideUri);
       this.uploadState = 'OCR 1/4 Reading selected file...';
-      const ocrText = await this.extractTextWithCoreVision(guideUri, sourceType);
+      const ocrText = await this.extractTextFromMedicineImage(guideUri, sourceType);
       console.info('[MediClearOCR] OCR text length=' + ocrText.length.toString());
       const matched = await this.matchAndApplyMedicineText(ocrText, 'OCR text', !isChatUpload);
       if (!matched) {
@@ -4070,7 +4070,7 @@ struct Index {
     }
   }
 
-  private async extractTextWithCoreVision(uri: string, sourceType: string): Promise<string> {
+  private async extractTextFromMedicineImage(uri: string, sourceType: string): Promise<string> {
     if (uri.length === 0) {
       return '';
     }
@@ -4080,15 +4080,15 @@ struct Index {
       throw new Error('Mobile OCR now supports medicine photos only. For official PDF leaflets, use the matched RPL leaflet endpoint and backend PDF knowledge base.');
     }
 
-    this.uploadState = 'OCR 2/4 Recognizing text locally with Core Vision...';
-    const coreVisionService = new CoreVisionOcrService();
-    const localText = await coreVisionService.extractTextFromImage(uri);
-    if (localText.trim().length > 0) {
-      console.info('[MediClearCoreVisionOCR] local OCR succeeded');
-      return localText;
+    this.uploadState = 'OCR 2/4 Uploading image for cloud text recognition...';
+    const cloudOcrService = new MedicineImageOcrService();
+    const cloudText = await cloudOcrService.extractTextFromImage(uri);
+    if (cloudText.trim().length > 0) {
+      console.info('[MediClearUapiOCR] cloud OCR succeeded sourceType=' + sourceType);
+      return cloudText;
     }
 
-    throw new Error('Core Vision returned an empty OCR result');
+    throw new Error('Cloud OCR returned an empty result');
   }
 
   private applyParsedMedicineGuide(parsed: ParsedMedicineGuide): void {
