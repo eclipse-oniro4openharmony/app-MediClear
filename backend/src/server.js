@@ -111,11 +111,22 @@ app.post('/api/ocr', express.raw({ type: 'application/octet-stream', limit: '10m
     form.append('return_markdown', 'false');
     form.append('enable_cls', 'true');
 
-    const ocrResponse = await fetch('https://uapis.cn/api/v1/image/ocr', {
-      method: 'POST',
-      body: form,
-      signal: AbortSignal.timeout(60000)
-    });
+    let ocrResponse;
+    try {
+      ocrResponse = await fetch('https://uapis.cn/api/v1/image/ocr', {
+        method: 'POST',
+        body: form,
+        signal: AbortSignal.timeout(60000)
+      });
+    } catch (error) {
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        console.warn('[ocr] upstream request timed out or was aborted');
+        response.status(504).json({ error: 'External OCR service timed out or was aborted' });
+        return;
+      }
+      next(error);
+      return;
+    }
     const result = await ocrResponse.json().catch(() => null);
     if (!ocrResponse.ok) {
       console.warn(`[ocr] provider returned status ${ocrResponse.status}`);
