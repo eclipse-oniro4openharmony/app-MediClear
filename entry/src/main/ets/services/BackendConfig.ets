@@ -8,6 +8,10 @@ export function buildRplDocumentExtractUrl(): string {
   return `${MEDICLEAR_BACKEND_BASE_URL}/api/documents/rpl`;
 }
 
+export function buildMedicineOcrUrl(): string {
+  return `${MEDICLEAR_BACKEND_BASE_URL}/api/ocr`;
+}
+
 export function buildDocumentChunksUrl(documentId: number): string {
   return `${MEDICLEAR_BACKEND_BASE_URL}/api/documents/${documentId}/chunks`;
 }
