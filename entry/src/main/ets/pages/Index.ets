@@ -4080,15 +4080,15 @@ struct Index {
       throw new Error('Mobile OCR now supports medicine photos only. For official PDF leaflets, use the matched RPL leaflet endpoint and backend PDF knowledge base.');
     }
 
-    this.uploadState = 'OCR 2/4 Uploading image for cloud text recognition...';
-    const cloudOcrService = new MedicineImageOcrService();
-    const cloudText = await cloudOcrService.extractTextFromImage(uri);
-    if (cloudText.trim().length > 0) {
-      console.info('[MediClearUapiOCR] cloud OCR succeeded sourceType=' + sourceType);
-      return cloudText;
+    this.uploadState = 'OCR 2/4 Sending image for local text recognition...';
+    const localOcrService = new MedicineImageOcrService();
+    const localText = await localOcrService.extractTextFromImage(uri);
+    if (localText.trim().length > 0) {
+      console.info('[MediClearLocalOCR] OCR succeeded sourceType=' + sourceType);
+      return localText;
     }
 
-    throw new Error('Cloud OCR returned an empty result');
+    throw new Error('Local OCR returned an empty result');
   }
 
   private applyParsedMedicineGuide(parsed: ParsedMedicineGuide): void {

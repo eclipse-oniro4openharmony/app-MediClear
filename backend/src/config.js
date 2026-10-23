@@ -11,6 +11,8 @@ export const config = {
   pdfTextMinLength: Number.parseInt(env('PDF_TEXT_MIN_LENGTH') ?? '300', 10),
   chunkSize: Number.parseInt(env('CHUNK_SIZE') ?? '1200', 10),
   chunkOverlap: Number.parseInt(env('CHUNK_OVERLAP') ?? '160', 10),
+  ocrServiceUrl: env('OCR_SERVICE_URL') ?? 'http://paddleocr:8080',
+  ocrTimeoutMs: Number.parseInt(env('OCR_TIMEOUT_MS') ?? '120000', 10),
   llmApiKey: env('LLM_API_KEY') ?? env('DEEPSEEK_API_KEY') ?? '',
   llmBaseUrl: env('LLM_BASE_URL') ?? env('DEEPSEEK_BASE_URL') ?? 'https://api.deepseek.com',
   llmModel: env('LLM_MODEL') ?? env('DEEPSEEK_MODEL') ?? 'deepseek-chat'
