@@ -4,6 +4,8 @@ This backend keeps PDF processing and PDF-derived knowledge-base data outside th
 
 The first backend capability is PDF knowledge-base preparation. It downloads official leaflet PDFs, extracts readable text, splits that text into chunks, stores the chunks in MongoDB, and does not persist the source PDF.
 
+The backend also provides `POST /api/ocr` for medicine-image OCR. It accepts an `application/octet-stream` image body and forwards it as multipart form data to UApiPro. Photos are processed in memory and are not stored by this backend. The upstream OCR API accepts images up to 10 MB; cloud OCR availability is required for image text extraction.
+
 ## Runtime Flow
 
 ```text

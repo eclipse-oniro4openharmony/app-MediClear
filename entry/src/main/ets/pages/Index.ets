@@ -6,7 +6,7 @@ import fs from '@ohos.file.fs';
 import { MediClearDatabase } from '../database/MediClearDatabase';
 import { RplMedicineDAO } from '../database/RplMedicineDAO';
 import { RplMedicineRecord } from '../database/RplMedicineRecord';
-import { CoreVisionOcrService } from '../services/CoreVisionOcrService';
+import { MedicineImageOcrService } from '../services/MedicineImageOcrService';
 import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
 import { MedicineReminderNotificationService } from '../services/MedicineReminderNotificationService';
 import {
@@ -213,6 +213,7 @@ struct Index {
   @State currentTab: number = 0;
   @State selectedGuide: number = 0;
   @State showUploadSheet: boolean = false;
+  @State showHomeProcessingOverlay: boolean = false;
   @State showBasicsForm: boolean = false;
   @State showReminderConfirmDialog: boolean = false;
   @State showDuplicateReminderDialog: boolean = false;
@@ -445,6 +446,10 @@ struct Index {
 
       if (this.showHistoryDetail) {
         this.HistoryDetailDialog(this.selectedHistoryRecord())
+      }
+
+      if (this.showHomeProcessingOverlay && this.currentTab === 0) {
+        this.MedicineProcessingOverlay()
       }
     }
     .width('100%')
@@ -1287,6 +1292,51 @@ struct Index {
     .borderRadius(10)
     .width('100%')
   }
+  @Builder
+  MedicineProcessingOverlay() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#660B1B2D')
+
+      Column({ space: 14 }) {
+        LoadingProgress()
+          .color('#009F9A')
+          .width(52)
+          .height(52)
+
+        Text('Preparing your medicine guide')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#142534')
+          .textAlign(TextAlign.Center)
+          .width('100%')
+
+        Text(this.uploadState)
+          .fontSize(14)
+          .fontColor('#536575')
+          .textAlign(TextAlign.Center)
+          .lineHeight(20)
+          .width('100%')
+
+        Text('Please keep MediClear open while we finish the analysis.')
+          .fontSize(12)
+          .fontColor('#81909D')
+          .textAlign(TextAlign.Center)
+          .lineHeight(18)
+          .width('100%')
+      }
+      .width('84%')
+      .padding({ left: 24, right: 24, top: 28, bottom: 28 })
+      .backgroundColor(Color.White)
+      .borderRadius(24)
+      .shadow({ radius: 28, color: '#330B1B2D', offsetY: 12 })
+    }
+    .width('100%')
+    .height('100%')
+  }
+
   @Builder
   UploadChoiceSheet() {
     Column() {
@@ -3592,6 +3642,7 @@ struct Index {
     this.uploadState = 'Extracting medicine guide text...';
     const guideUri = this.selectedGuideUri;
     const isChatUpload = this.activeUploadPurpose === 'chat';
+    this.showHomeProcessingOverlay = this.currentTab === 0 && !isChatUpload;
     if (isChatUpload) {
       this.uploadSource = 'Medicine photo captured. MediClear is matching the package to an official leaflet knowledge base.\nURI: ' + guideUri;
     } else if (sourceType === 'camera') {
@@ -3604,7 +3655,7 @@ struct Index {
     try {
       console.info('[MediClearOCR] start OCR sourceType=' + sourceType + ' path=' + guideUri);
       this.uploadState = 'OCR 1/4 Reading selected file...';
-      const ocrText = await this.extractTextWithCoreVision(guideUri, sourceType);
+      const ocrText = await this.extractTextFromMedicineImage(guideUri, sourceType);
       console.info('[MediClearOCR] OCR text length=' + ocrText.length.toString());
       const matched = await this.matchAndApplyMedicineText(ocrText, 'OCR text', !isChatUpload);
       if (!matched) {
@@ -3618,6 +3669,8 @@ struct Index {
       console.error('[MediClearOCR] OCR failed: ' + JSON.stringify(err));
       this.uploadState = 'Text extraction unavailable';
       this.uploadSource = 'MediClear could not extract text from this file.\nError: ' + JSON.stringify(err);
+    } finally {
+      this.showHomeProcessingOverlay = false;
     }
   }
 
@@ -4017,7 +4070,7 @@ struct Index {
     }
   }
 
-  private async extractTextWithCoreVision(uri: string, sourceType: string): Promise<string> {
+  private async extractTextFromMedicineImage(uri: string, sourceType: string): Promise<string> {
     if (uri.length === 0) {
       return '';
     }
@@ -4027,15 +4080,15 @@ struct Index {
       throw new Error('Mobile OCR now supports medicine photos only. For official PDF leaflets, use the matched RPL leaflet endpoint and backend PDF knowledge base.');
     }
 
-    this.uploadState = 'OCR 2/4 Recognizing text locally with Core Vision...';
-    const coreVisionService = new CoreVisionOcrService();
-    const localText = await coreVisionService.extractTextFromImage(uri);
-    if (localText.trim().length > 0) {
-      console.info('[MediClearCoreVisionOCR] local OCR succeeded');
-      return localText;
+    this.uploadState = 'OCR 2/4 Uploading image for cloud text recognition...';
+    const cloudOcrService = new MedicineImageOcrService();
+    const cloudText = await cloudOcrService.extractTextFromImage(uri);
+    if (cloudText.trim().length > 0) {
+      console.info('[MediClearUapiOCR] cloud OCR succeeded sourceType=' + sourceType);
+      return cloudText;
     }
 
-    throw new Error('Core Vision returned an empty OCR result');
+    throw new Error('Cloud OCR returned an empty result');
   }
 
   private applyParsedMedicineGuide(parsed: ParsedMedicineGuide): void {

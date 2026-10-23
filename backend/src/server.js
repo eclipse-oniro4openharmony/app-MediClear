@@ -83,6 +83,58 @@ app.get('/health', (_request, response) => {
   });
 });
 
+app.post('/api/ocr', express.raw({ type: 'application/octet-stream', limit: '10mb' }), async (request, response, next) => {
+  try {
+    if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
+      response.status(400).json({ error: 'Image data is required' });
+      return;
+    }
+
+    const contentType = request.get('x-file-type') ?? '';
+    const supportedTypes = new Set([
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'image/bmp',
+      'image/gif'
+    ]);
+    if (!supportedTypes.has(contentType)) {
+      response.status(415).json({ error: 'Unsupported image type' });
+      return;
+    }
+
+    const rawFileName = request.get('x-file-name') ?? 'medicine-image';
+    const fileName = rawFileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'medicine-image';
+    const form = new FormData();
+    form.append('file', new Blob([request.body], { type: contentType }), fileName);
+    form.append('need_location', 'false');
+    form.append('return_markdown', 'false');
+    form.append('enable_cls', 'true');
+
+    const ocrResponse = await fetch('https://uapis.cn/api/v1/image/ocr', {
+      method: 'POST',
+      body: form,
+      signal: AbortSignal.timeout(60000)
+    });
+    const result = await ocrResponse.json().catch(() => null);
+    if (!ocrResponse.ok) {
+      console.warn(`[ocr] provider returned status ${ocrResponse.status}`);
+      response.status(502).json({ error: 'External OCR service failed' });
+      return;
+    }
+
+    const text = typeof result?.plain_text === 'string' ? result.plain_text : result?.text;
+    if (typeof text !== 'string') {
+      response.status(502).json({ error: 'External OCR response did not contain text' });
+      return;
+    }
+
+    response.json({ text });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/debug/echo', (request, response) => {
   response.json({
     ok: true,
