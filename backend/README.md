@@ -46,6 +46,8 @@ cp .env.example .env
 
 Configure the chat model in `backend/.env` if chat completion is needed. The OCR service is included in Compose and requires no API key.
 
+Set a stable `AUTH_TOKEN_SECRET` with at least 32 random characters and configure the `SMTP_*` values before enabling user registration. For local-only testing, set `NODE_ENV=development` and `AUTH_EMAIL_MODE=console`; verification codes will be written to backend logs instead of sent by email. Do not use console email mode in production.
+
 For the current DeepSeek setup:
 
 ```text
@@ -150,6 +152,20 @@ X-File-Type: image/jpeg
 ```
 
 The response is `{ "text": "..." }`. The backend converts the image body to Base64 for PaddleX's `POST /ocr` API and returns only recognized text to the app.
+
+### Authentication
+
+Authentication endpoints:
+
+- `POST /api/auth/register` — create a pending account and send an email verification code.
+- `POST /api/auth/verify-email` — verify an email address with its six-digit code.
+- `POST /api/auth/login` — return a short-lived access token and refresh token.
+- `POST /api/auth/refresh` — rotate a refresh token and return a new access/refresh token pair.
+- `POST /api/auth/logout` — revoke a refresh token.
+- `POST /api/auth/forgot-password` — send a password reset code without revealing whether an account exists.
+- `POST /api/auth/reset-password` — change a password using the emailed code and revoke existing refresh sessions.
+
+All other `/api/*` routes require `Authorization: Bearer <access-token>`. `/health` remains public. User accounts and refresh sessions are stored in MongoDB; access tokens expire after 15 minutes and refresh tokens expire after 30 days.
 
 ### Extract RPL Leaflet
 
