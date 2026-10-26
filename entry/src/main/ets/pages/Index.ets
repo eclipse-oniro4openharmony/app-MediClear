@@ -541,7 +541,9 @@ struct Index {
           .textAlign(TextAlign.Center)
       }
 
-      this.AuthTextInput('Email', 'you@example.com', this.authEmail, 'email', InputType.Email, 254)
+      if (this.authMode !== 'verify-email') {
+        this.AuthTextInput('Email', 'you@example.com', this.authEmail, 'email', InputType.Email, 254)
+      }
 
       if (this.authMode === 'login' || this.authMode === 'register') {
         this.AuthTextInput('Password', 'At least 12 characters', this.authPassword, 'password',
@@ -663,7 +665,7 @@ struct Index {
       return 'Create account';
     }
     if (this.authMode === 'verify-email') {
-      return 'Verify email';
+      return 'Confirm';
     }
     if (this.authMode === 'forgot-password') {
       return 'Send reset code';
