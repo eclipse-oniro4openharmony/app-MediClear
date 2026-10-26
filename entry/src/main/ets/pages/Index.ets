@@ -310,12 +310,10 @@ struct Index {
   @State historyDetailStatus: string = '';
   @State settingsDetailPage: string = '';
   @State homeMedicineSearchQuery: string = '';
-
   private sexOptions: SelectOption[] = [
     { value: 'Male' },
     { value: 'Female' }
   ];
-
   private allergyOptions: SelectOption[] = [
     { value: 'None' },
     { value: 'Penicillin' },
@@ -342,18 +340,15 @@ struct Index {
     { value: 'Pollen' },
     { value: 'Dust mites' }
   ];
-
   private actions: ActionItem[] = [
     new ActionItem('Upload Medicine Guide', 'Scan leaflet or upload PDF', $r('app.media.bi_cloud_upload'), '#009F9A'),
     new ActionItem('My Reminders', 'View and manage schedule', $r('app.media.bi_bell'), '#1767C5'),
     new ActionItem('Medicine History', 'Past medicines and guides', $r('app.media.bi_clock_history'), '#6554D9')
   ];
-
   private reminders: ReminderItem[] = [
     new ReminderItem('08:30', 'After breakfast', '1 tablet', $r('app.media.bi_sun'), '#009F9A', '#E7FAF6'),
     new ReminderItem('19:30', 'After dinner', '1 tablet', $r('app.media.bi_bell'), '#5648D9', '#F0EEFF')
   ];
-
   private historyPreferencesName: string = 'mediclear_history';
   private historyPreferencesKey: string = 'medicine_history';
   private reminderPreferencesName: string = 'mediclear_reminders';
@@ -429,7 +424,12 @@ struct Index {
                 this.ProfileView()
               }
             }
-            .padding({ left: 20, right: 20, top: this.contentTopPadding(), bottom: 92 })
+            .padding({
+              left: 20,
+              right: 20,
+              top: this.contentTopPadding(),
+              bottom: 92
+            })
             .width('100%')
             .constraintSize({ minHeight: '100%' })
             .justifyContent(FlexAlign.Start)
@@ -493,6 +493,7 @@ struct Index {
               .fontColor('#12313A')
           }
           .alignItems(VerticalAlign.Center)
+
           Text('Your medicine guides, reminders, and health notes')
             .fontSize(14)
             .fontColor('#5D7179')
@@ -515,7 +516,12 @@ struct Index {
           }
         }
         .width('100%')
-        .padding({ left: 24, right: 24, top: 48, bottom: 36 })
+        .padding({
+          left: 24,
+          right: 24,
+          top: 48,
+          bottom: 36
+        })
         .alignItems(HorizontalAlign.Center)
       }
       .width('100%')
@@ -1205,7 +1211,12 @@ struct Index {
     }
     .width('100%')
     .height(64)
-    .padding({ left: 20, right: 20, top: 10, bottom: 8 })
+    .padding({
+      left: 20,
+      right: 20,
+      top: 10,
+      bottom: 8
+    })
     .backgroundColor('#F6FBFC')
   }
 
@@ -1244,7 +1255,7 @@ struct Index {
       if (this.medicines.length > 0) {
         Column({ space: 10 }) {
           ForEach(this.homeRecentMedicines(), (item: MedicineRecord) => {
-          this.MedicineMiniCard(item)
+            this.MedicineMiniCard(item)
           }, (item: MedicineRecord) => this.historyRecordKey(item))
         }
         .width('100%')
@@ -1297,8 +1308,8 @@ struct Index {
           void this.searchMedicineFromHome();
         })
     }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
   }
 
   @Builder
@@ -1346,12 +1357,20 @@ struct Index {
             .fontSize(11)
             .fontWeight(FontWeight.Medium)
             .fontColor('#007D83')
-            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+            .padding({
+              left: 8,
+              right: 8,
+              top: 4,
+              bottom: 4
+            })
             .backgroundColor('#DDF7F5')
             .borderRadius(10)
         }
         .width('100%')
-        Text(this.hasCompletedBasics() ? 'Your health context is saved for medicine leaflet answers. Tap here anytime to edit it.' : 'Add sex, age, weight, current symptoms, allergy history, and special status so the chat assistant can explain medicine leaflet warnings with better context.')
+
+        Text(this.hasCompletedBasics() ?
+          'Your health context is saved for medicine leaflet answers. Tap here anytime to edit it.' :
+          'Add sex, age, weight, current symptoms, allergy history, and special status so the chat assistant can explain medicine leaflet warnings with better context.')
           .fontSize(13)
           .fontColor('#42566F')
           .lineHeight(18)
@@ -1365,6 +1384,7 @@ struct Index {
         }
       }
       .layoutWeight(1)
+
       this.ChevronRight('#008A88')
     }
     .padding(14)
@@ -1406,9 +1426,12 @@ struct Index {
         this.BasicsSexPicker()
         this.BasicsTextInput('Age', 'e.g. 22', this.basicAge, 'age', true)
         this.BasicsTextInput('Weight(kg)', 'e.g. 60', this.basicWeight, 'weight', true)
-        this.BasicsTextArea('Current symptoms', 'Describe what you feel now, such as stomach pain, fever, bloating, duration, and severity.', this.basicSymptoms, 'symptoms')
+        this.BasicsTextArea('Current symptoms',
+          'Describe what you feel now, such as stomach pain, fever, bloating, duration, and severity.',
+          this.basicSymptoms, 'symptoms')
         this.BasicsAllergyPicker()
-        this.BasicsTextInput('Special status', 'e.g. pregnant, trying to conceive, breastfeeding, none', this.basicSpecialStatus, 'specialStatus', false)
+        this.BasicsTextInput('Special status', 'e.g. pregnant, trying to conceive, breastfeeding, none',
+          this.basicSpecialStatus, 'specialStatus', false)
       }
       .padding(16)
       .backgroundColor(Color.White)
@@ -1482,6 +1505,7 @@ struct Index {
       .onClick(() => {
         this.showBasicsForm = false;
       })
+
       Text('Basics')
         .fontSize(19)
         .fontWeight(FontWeight.Bold)
@@ -1531,20 +1555,20 @@ struct Index {
         .onSelect((index: number, value: string) => {
           this.basicGender = value;
         })
-      .menuAlign(MenuAlignType.START)
-      .optionWidth(OptionWidthMode.FIT_TRIGGER)
-      .width('100%')
-      .height(46)
-      .padding({ left: 12, right: 12 })
-      .backgroundColor('#F8FCFC')
-      .border({ width: 1, color: '#DCEBED' })
-      .borderRadius(10)
-      .stateStyles({
-        pressed: {
-          .opacity(0.86)
-          .scale({ x: 0.98, y: 0.98 })
-        }
-      })
+        .menuAlign(MenuAlignType.START)
+        .optionWidth(OptionWidthMode.FIT_TRIGGER)
+        .width('100%')
+        .height(46)
+        .padding({ left: 12, right: 12 })
+        .backgroundColor('#F8FCFC')
+        .border({ width: 1, color: '#DCEBED' })
+        .borderRadius(10)
+        .stateStyles({
+          pressed: {
+            .opacity(0.86)
+            .scale({ x: 0.98, y: 0.98 })
+          }
+        })
     }
     .width('100%')
   }
@@ -1558,7 +1582,12 @@ struct Index {
         .fontColor('#111827')
         .placeholderColor('#8A98A8')
         .height(108)
-        .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+        .padding({
+          left: 12,
+          right: 12,
+          top: 10,
+          bottom: 10
+        })
         .backgroundColor('#F8FCFC')
         .border({ width: 1, color: '#DCEBED' })
         .borderRadius(10)
@@ -1585,21 +1614,21 @@ struct Index {
         .onSelect((index: number, value: string) => {
           this.appendBasicAllergy(value);
         })
-      .menuAlign(MenuAlignType.START)
-      .optionWidth(OptionWidthMode.FIT_TRIGGER)
-      .optionHeight(220)
-      .width('100%')
-      .height(46)
-      .padding({ left: 12, right: 12 })
-      .backgroundColor('#F8FCFC')
-      .border({ width: 1, color: '#DCEBED' })
-      .borderRadius(10)
-      .stateStyles({
-        pressed: {
-          .opacity(0.86)
-          .scale({ x: 0.98, y: 0.98 })
-        }
-      })
+        .menuAlign(MenuAlignType.START)
+        .optionWidth(OptionWidthMode.FIT_TRIGGER)
+        .optionHeight(220)
+        .width('100%')
+        .height(46)
+        .padding({ left: 12, right: 12 })
+        .backgroundColor('#F8FCFC')
+        .border({ width: 1, color: '#DCEBED' })
+        .borderRadius(10)
+        .stateStyles({
+          pressed: {
+            .opacity(0.86)
+            .scale({ x: 0.98, y: 0.98 })
+          }
+        })
 
       if (this.basicAllergyHistory.length > 0) {
         Flex({ wrap: FlexWrap.Wrap, direction: FlexDirection.Row }) {
@@ -1630,19 +1659,19 @@ struct Index {
             .height(18)
             .fillColor(Color.White)
         }
-          .backgroundColor('#009F9A')
-          .borderRadius(10)
-          .width(42)
-          .height(42)
-          .stateStyles({
-            pressed: {
-              .opacity(0.82)
-              .scale({ x: 0.94, y: 0.94 })
-            }
-          })
-          .onClick(() => {
-            this.addCustomBasicAllergy();
-          })
+        .backgroundColor('#009F9A')
+        .borderRadius(10)
+        .width(42)
+        .height(42)
+        .stateStyles({
+          pressed: {
+            .opacity(0.82)
+            .scale({ x: 0.94, y: 0.94 })
+          }
+        })
+        .onClick(() => {
+          this.addCustomBasicAllergy();
+        })
       }
       .width('100%')
     }
@@ -1678,20 +1707,25 @@ struct Index {
         .height(14)
         .fillColor('#007D83')
     }
-      .padding({ left: 12, right: 9, top: 7, bottom: 7 })
-      .backgroundColor('#E8F8F6')
-      .border({ width: 1, color: '#B7DFDC' })
-      .borderRadius(16)
-      .margin({ right: 8, bottom: 8 })
-      .stateStyles({
-        pressed: {
-          .opacity(0.82)
-          .scale({ x: 0.96, y: 0.96 })
-        }
-      })
-      .onClick(() => {
-        this.removeBasicAllergy(label);
-      })
+    .padding({
+      left: 12,
+      right: 9,
+      top: 7,
+      bottom: 7
+    })
+    .backgroundColor('#E8F8F6')
+    .border({ width: 1, color: '#B7DFDC' })
+    .borderRadius(16)
+    .margin({ right: 8, bottom: 8 })
+    .stateStyles({
+      pressed: {
+        .opacity(0.82)
+        .scale({ x: 0.96, y: 0.96 })
+      }
+    })
+    .onClick(() => {
+      this.removeBasicAllergy(label);
+    })
   }
 
   @Builder
@@ -1717,7 +1751,12 @@ struct Index {
           .fontColor('#536175')
           .lineHeight(18)
           .width('100%')
-          .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+          .padding({
+            left: 12,
+            right: 12,
+            top: 10,
+            bottom: 10
+          })
           .backgroundColor('#F8FCFC')
           .border({ width: 1, color: '#DCEBED' })
           .borderRadius(10)
@@ -1744,12 +1783,18 @@ struct Index {
         .lineHeight(18)
         .width('100%')
     }
-    .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+    .padding({
+      left: 12,
+      right: 12,
+      top: 10,
+      bottom: 10
+    })
     .backgroundColor('#F8FCFC')
     .border({ width: 1, color: '#DCEBED' })
     .borderRadius(10)
     .width('100%')
   }
+
   @Builder
   MedicineProcessingOverlay() {
     Stack({ alignContent: Alignment.Center }) {
@@ -1786,7 +1831,12 @@ struct Index {
           .width('100%')
       }
       .width('84%')
-      .padding({ left: 24, right: 24, top: 28, bottom: 28 })
+      .padding({
+        left: 24,
+        right: 24,
+        top: 28,
+        bottom: 28
+      })
       .backgroundColor(Color.White)
       .borderRadius(24)
       .shadow({ radius: 28, color: '#330B1B2D', offsetY: 12 })
@@ -1825,7 +1875,8 @@ struct Index {
         }
         .width('100%')
 
-        Text('Choose a leaflet or instruction-guide source. MediClear will read the guide, match the medicine, and generate a reminder plan from the official leaflet.')
+        Text(
+          'Choose a leaflet or instruction-guide source. MediClear will read the guide, match the medicine, and generate a reminder plan from the official leaflet.')
           .fontSize(13)
           .fontColor('#536175')
           .lineHeight(19)
@@ -1836,6 +1887,7 @@ struct Index {
           this.UploadChoiceButton('Choose Photo', 'Guide image', $r('app.media.bi_cloud_upload'), '#1767C5', 'gallery')
         }
         .width('100%')
+
         Button('Upload PDF or document')
           .fontSize(15)
           .fontWeight(FontWeight.Bold)
@@ -1955,7 +2007,12 @@ struct Index {
           Text('OTC')
             .fontSize(12)
             .fontColor('#057A68')
-            .padding({ left: 12, right: 12, top: 5, bottom: 5 })
+            .padding({
+              left: 12,
+              right: 12,
+              top: 5,
+              bottom: 5
+            })
             .backgroundColor('#DDF8EA')
             .borderRadius(14)
             .alignSelf(ItemAlign.Start)
@@ -1966,7 +2023,8 @@ struct Index {
       .backgroundColor(Color.White)
       .borderRadius(14)
 
-      this.InfoCard('Active Ingredient', this.activeIngredient + '\n' + this.ingredientNote, $r('app.media.bi_flask'), '#E0F6F1')
+      this.InfoCard('Active Ingredient', this.activeIngredient + '\n' + this.ingredientNote, $r('app.media.bi_flask'),
+        '#E0F6F1')
       this.InfoCard('How to Take', this.howToTake, $r('app.media.bi_list_check'), '#EAF2FF')
     }
     .width('100%')
@@ -1975,7 +2033,8 @@ struct Index {
   @Builder
   SafetyChecklist() {
     Column({ space: 14 }) {
-      this.WarningCard('Do not use if', this.contraindications, '#EF4444', '#FFF4F4', $r('app.media.bi_exclamation_triangle'))
+      this.WarningCard('Do not use if', this.contraindications, '#EF4444', '#FFF4F4',
+        $r('app.media.bi_exclamation_triangle'))
       this.WarningCard('Avoid', this.avoidWarnings, '#F59E0B', '#FFF9EA', $r('app.media.bi_exclamation_triangle'))
       this.WarningCard('Contact a doctor if', this.doctorWarnings, '#1767C5', '#F0F7FF', $r('app.media.bi_info_circle'))
 
@@ -1993,6 +2052,7 @@ struct Index {
           this.Chip('Headache')
           this.Chip('Fatigue')
         }
+
         this.NoteCard()
       }
       .width('100%')
@@ -2055,7 +2115,12 @@ struct Index {
           .lineHeight(20)
           .textAlign(TextAlign.Center)
           .width('100%')
-          .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+          .padding({
+            left: 12,
+            right: 12,
+            top: 10,
+            bottom: 10
+          })
           .backgroundColor('#F8FCFC')
           .border({ width: 1, color: '#DCEBED' })
           .borderRadius(10)
@@ -2208,8 +2273,10 @@ struct Index {
       .justifyContent(FlexAlign.Center)
       .backgroundColor(this.isSelectedReminderCalendarDay(day) ? '#1767C5' :
         (day.hasReminder ? '#FFF4C2' : (day.today ? '#EAF2FF' : '#F8FCFC')))
-      .border({ width: 1, color: this.isSelectedReminderCalendarDay(day) ? '#1767C5' :
-        (day.hasReminder ? '#FBBF24' : (day.today ? '#1767C5' : '#E4EAF0')) })
+      .border({
+        width: 1, color: this.isSelectedReminderCalendarDay(day) ? '#1767C5' :
+          (day.hasReminder ? '#FBBF24' : (day.today ? '#1767C5' : '#E4EAF0'))
+      })
       .borderRadius(10)
       .stateStyles({
         pressed: {
@@ -2318,7 +2385,12 @@ struct Index {
       }
       .layoutWeight(1)
     }
-    .padding({ left: 10, right: 10, top: 7, bottom: 7 })
+    .padding({
+      left: 10,
+      right: 10,
+      top: 7,
+      bottom: 7
+    })
     .backgroundColor('#FFFFFF')
     .border({ width: 1, color: '#F4D47A' })
     .borderRadius(8)
@@ -2350,18 +2422,18 @@ struct Index {
     Column({ space: 16 }) {
       this.PageTop('Medicine History')
       TextInput({ placeholder: 'Search medicines', text: this.historySearchQuery })
-          .fontSize(14)
-          .fontColor('#111827')
-          .placeholderColor('#7A8797')
-          .padding({ left: 14, right: 14 })
-          .height(44)
-          .backgroundColor(Color.White)
-          .borderRadius(10)
-          .border({ width: 1, color: '#E4EAF0' })
-          .width('100%')
-          .onChange((value: string) => {
-            this.historySearchQuery = value;
-          })
+        .fontSize(14)
+        .fontColor('#111827')
+        .placeholderColor('#7A8797')
+        .padding({ left: 14, right: 14 })
+        .height(44)
+        .backgroundColor(Color.White)
+        .borderRadius(10)
+        .border({ width: 1, color: '#E4EAF0' })
+        .width('100%')
+        .onChange((value: string) => {
+          this.historySearchQuery = value;
+        })
 
       Text('Recent Entries')
         .fontSize(16)
@@ -2480,6 +2552,7 @@ struct Index {
       .onClick(() => {
         this.showHistoryDetail = false;
       })
+
       Text('Medicine Details')
         .fontSize(19)
         .fontWeight(FontWeight.Bold)
@@ -2507,16 +2580,27 @@ struct Index {
             this.ChatPhotoCard()
           }
         }
-        .padding({ left: 20, right: 20, top: 12, bottom: 18 })
+        .padding({
+          left: 20,
+          right: 20,
+          top: 12,
+          bottom: 18
+        })
         .width('100%')
       }
       .scrollBar(BarState.Off)
       .layoutWeight(1)
+
       if (this.hasActiveChatMedicine()) {
         Column() {
           this.ChatInputBar()
         }
-        .padding({ left: 20, right: 20, top: 10, bottom: 12 })
+        .padding({
+          left: 20,
+          right: 20,
+          top: 10,
+          bottom: 12
+        })
         .backgroundColor('#F6FBFC')
         .width('100%')
       }
@@ -2537,6 +2621,7 @@ struct Index {
       }
       .layoutWeight(1)
       .alignItems(VerticalAlign.Center)
+
       Stack() {
         Image($r('app.media.chat_new_art'))
           .width(34)
@@ -2559,7 +2644,12 @@ struct Index {
     }
     .width('100%')
     .height(64)
-    .padding({ left: 20, right: 20, top: 10, bottom: 8 })
+    .padding({
+      left: 20,
+      right: 20,
+      top: 10,
+      bottom: 8
+    })
     .backgroundColor('#F6FBFC')
   }
 
@@ -2578,6 +2668,7 @@ struct Index {
           .fontColor('#536175')
       }
       .layoutWeight(1)
+
       Stack() {
         Image($r('app.media.chat_robot_art'))
           .width(76)
@@ -2616,7 +2707,8 @@ struct Index {
           Text(this.leafletUrl.length > 0 ? 'Source: Official Leaflet (RPL)' : 'Source: Local medicine guide')
             .fontSize(12)
             .fontColor('#294159')
-          Text(this.backendKnowledgeDocumentId.length > 0 ? 'Knowledge base #' + this.backendKnowledgeDocumentId : this.chatStatus)
+          Text(this.backendKnowledgeDocumentId.length > 0 ? 'Knowledge base #' + this.backendKnowledgeDocumentId :
+            this.chatStatus)
             .fontSize(12)
             .fontColor(this.backendKnowledgeDocumentId.length > 0 ? '#007D83' : '#7A8797')
           Text(this.buildPatientContextSummary())
@@ -2654,6 +2746,7 @@ struct Index {
       .width(88)
       .height(88)
       .margin({ top: 6, bottom: 0 })
+
       Text(this.uploadState === 'No medicine guide scanned yet' ? 'Tap to take photo' : this.uploadState)
         .fontSize(12)
         .fontColor('#536175')
@@ -2737,7 +2830,12 @@ struct Index {
           .fontSize(13)
           .fontColor(Color.White)
           .lineHeight(19)
-          .padding({ left: 13, right: 13, top: 10, bottom: 10 })
+          .padding({
+            left: 13,
+            right: 13,
+            top: 10,
+            bottom: 10
+          })
           .backgroundColor('#009F9A')
           .border({ width: 1, color: '#009F9A' })
           .borderRadius(12)
@@ -2752,10 +2850,16 @@ struct Index {
             .width('100%')
         }
         .width('82%')
-        .padding({ left: 13, right: 13, top: 10, bottom: 10 })
+        .padding({
+          left: 13,
+          right: 13,
+          top: 10,
+          bottom: 10
+        })
         .backgroundColor(Color.White)
         .border({ width: 1, color: '#E3ECF2' })
         .borderRadius(12)
+
         Blank()
       }
     }
@@ -2768,7 +2872,12 @@ struct Index {
       .fontSize(13)
       .fontWeight(FontWeight.Medium)
       .fontColor('#1F4D9A')
-      .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+      .padding({
+        left: 12,
+        right: 12,
+        top: 8,
+        bottom: 8
+      })
       .backgroundColor('#EEF5FF')
       .borderRadius(16)
       .margin({ right: 8, bottom: 8 })
@@ -2849,10 +2958,12 @@ struct Index {
         this.SettingPanel('Help & Support', $r('app.media.bi_question_circle'), '#EAF2FF', '#1767C5', 'help')
         this.SettingPanel('About MediClear', $r('app.media.bi_info_circle'), '#E8F8F6', '#008A88', 'about')
         this.NoteCard()
+
         Text('Signed in as ' + this.currentUserEmail)
           .fontSize(12)
           .fontColor('#536575')
           .width('100%')
+
         Button('Sign out')
           .fontSize(14)
           .fontWeight(FontWeight.Bold)
@@ -3048,6 +3159,7 @@ struct Index {
           .fontColor(index === 0 ? '#E9FFFC' : '#45556C')
       }
       .layoutWeight(1)
+
       this.ChevronRight(index === 0 ? Color.White : item.tint)
     }
     .height(66)
@@ -3091,6 +3203,7 @@ struct Index {
           .fontColor('#5B6778')
       }
       .layoutWeight(1)
+
       this.ChevronRight('#4D6682')
     }
     .padding(14)
@@ -3142,10 +3255,16 @@ struct Index {
           .fontColor('#111827')
       }
       .layoutWeight(1)
+
       Text(record.date)
         .fontSize(11)
         .fontColor('#1261BA')
-        .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+        .padding({
+          left: 8,
+          right: 8,
+          top: 4,
+          bottom: 4
+        })
         .backgroundColor('#E6F0FF')
         .borderRadius(8)
       this.ChevronRight('#4D6682')
@@ -3205,6 +3324,7 @@ struct Index {
       .height(38)
       .backgroundColor('#FFF8E6')
       .borderRadius(12)
+
       Column({ space: 8 }) {
         Text(title)
           .fontSize(16)
@@ -3239,6 +3359,7 @@ struct Index {
           .lineHeight(20)
       }
       .layoutWeight(1)
+
       this.ChevronRight('#8A98A8')
     }
     .padding(16)
@@ -3256,10 +3377,11 @@ struct Index {
           .height(22)
           .fillColor(tint)
       }
-        .width(34)
-        .height(34)
-        .border({ width: 2, color: tint })
-        .borderRadius(17)
+      .width(34)
+      .height(34)
+      .border({ width: 2, color: tint })
+      .borderRadius(17)
+
       Column({ space: 8 }) {
         Text(title)
           .fontSize(17)
@@ -3377,6 +3499,7 @@ struct Index {
           .borderRadius(15)
         }
         .width('100%')
+
         Text(item.dose)
           .fontSize(13)
           .fontColor('#263244')
@@ -3392,7 +3515,12 @@ struct Index {
             Text(item.startDate + ' - ' + item.endDate)
               .fontSize(11)
               .fontColor('#007D83')
-              .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+              .padding({
+                left: 8,
+                right: 8,
+                top: 4,
+                bottom: 4
+              })
               .backgroundColor('#E8F8F6')
               .borderRadius(8)
           }
@@ -3540,6 +3668,7 @@ struct Index {
           .fontColor('#006D78')
       }
       .layoutWeight(1)
+
       this.LogoMark(28)
     }
     .padding(14)
@@ -3571,7 +3700,12 @@ struct Index {
     Text(label)
       .fontSize(12)
       .fontColor('#1663B7')
-      .padding({ left: 14, right: 14, top: 7, bottom: 7 })
+      .padding({
+        left: 14,
+        right: 14,
+        top: 7,
+        bottom: 7
+      })
       .backgroundColor('#E8F1FF')
       .border({ width: 1, color: '#C7DFFF' })
       .borderRadius(16)
@@ -3780,7 +3914,12 @@ struct Index {
               .lineHeight(18)
               .width('100%')
           }
-          .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+          .padding({
+            left: 10,
+            right: 10,
+            top: 9,
+            bottom: 9
+          })
           .backgroundColor('#F6FBFC')
           .border({ width: 1, color: '#DCEBED' })
           .borderRadius(10)
@@ -3830,7 +3969,12 @@ struct Index {
             .fontColor('#8A5A00')
             .lineHeight(17)
             .width('100%')
-            .padding({ left: 10, right: 10, top: 8, bottom: 8 })
+            .padding({
+              left: 10,
+              right: 10,
+              top: 8,
+              bottom: 8
+            })
             .backgroundColor('#FFF8E6')
             .borderRadius(8)
         }
@@ -3984,10 +4128,10 @@ struct Index {
         .height(25)
         .fillColor(tint)
     }
-      .width(50)
-      .height(50)
-      .backgroundColor(background)
-      .borderRadius(14)
+    .width(50)
+    .height(50)
+    .backgroundColor(background)
+    .borderRadius(14)
   }
 
   @Builder
@@ -4071,7 +4215,8 @@ struct Index {
       this.handleMedicineGuidePicked('chat-camera', picked);
     } catch (err) {
       this.uploadState = 'Camera cancelled';
-      this.uploadSource = 'No medicine photo was captured. Tap the camera card to try again.\nError: ' + JSON.stringify(err);
+      this.uploadSource =
+        'No medicine photo was captured. Tap the camera card to try again.\nError: ' + JSON.stringify(err);
     }
   }
 
@@ -4118,7 +4263,9 @@ struct Index {
     const isChatUpload = this.activeUploadPurpose === 'chat';
     this.showHomeProcessingOverlay = this.currentTab === 0 && !isChatUpload;
     if (isChatUpload) {
-      this.uploadSource = 'Medicine photo captured. MediClear is matching the package to an official leaflet knowledge base.\nURI: ' + guideUri;
+      this.uploadSource =
+        'Medicine photo captured. MediClear is matching the package to an official leaflet knowledge base.\nURI: ' +
+          guideUri;
     } else if (sourceType === 'camera') {
       this.uploadSource = 'Guide photo captured. MediClear is extracting leaflet text.\nURI: ' + guideUri;
     } else if (sourceType === 'gallery') {
@@ -4222,7 +4369,8 @@ struct Index {
     return true;
   }
 
-  private async prepareBackendKnowledgeBase(parsed: ParsedMedicineGuide, shouldPrepareReminders: boolean): Promise<void> {
+  private async prepareBackendKnowledgeBase(parsed: ParsedMedicineGuide,
+    shouldPrepareReminders: boolean): Promise<void> {
     if (parsed.productId.length === 0) {
       this.backendKnowledgeStatus = 'Skipped - no product ID';
       return;
@@ -4489,7 +4637,8 @@ struct Index {
     this.appendChatMessage('user', question);
 
     if (this.backendKnowledgeDocumentId.length === 0) {
-      this.appendChatMessage('assistant', 'Please take a photo of a medicine first, or choose a history item with a ready knowledge base.');
+      this.appendChatMessage('assistant',
+        'Please take a photo of a medicine first, or choose a history item with a ready knowledge base.');
       return;
     }
 
@@ -4513,7 +4662,8 @@ struct Index {
     } catch (err) {
       const loadingIndex = this.chatMessages.length - 1;
       const updatedMessages = this.chatMessages.slice(0, loadingIndex);
-      updatedMessages.push(new MedicineChatMessage('assistant', 'I could not reach the medicine AI service. Error: ' + JSON.stringify(err)));
+      updatedMessages.push(new MedicineChatMessage('assistant',
+        'I could not reach the medicine AI service. Error: ' + JSON.stringify(err)));
       this.chatMessages = updatedMessages;
       this.chatStatus = 'Chat unavailable';
       console.error('[MediClearChat] chat failed: ' + JSON.stringify(err));
@@ -4529,7 +4679,8 @@ struct Index {
       this.backendKnowledgeDocumentId = '';
       this.backendKnowledgeTextLength = '';
       this.chatStatus = 'No backend knowledge base for this history item';
-      this.appendChatMessage('assistant', record.name + ' is selected, but no official leaflet knowledge base is loaded yet. Take a photo to create one.');
+      this.appendChatMessage('assistant', record.name +
+        ' is selected, but no official leaflet knowledge base is loaded yet. Take a photo to create one.');
       return;
     }
 
@@ -4542,13 +4693,15 @@ struct Index {
       this.backendKnowledgeTextLength = document.text_length.toString();
       this.backendKnowledgeStatus = document.status + ' via ' + document.extraction_method;
       this.chatStatus = 'Knowledge base ready for ' + record.name;
-      this.appendChatMessage('assistant', 'Switched to ' + record.name + '. I will answer using its official leaflet knowledge base.');
+      this.appendChatMessage('assistant',
+        'Switched to ' + record.name + '. I will answer using its official leaflet knowledge base.');
     } catch (err) {
       this.backendKnowledgeDocumentId = '';
       this.backendKnowledgeTextLength = '';
       this.chatStatus = 'No stored knowledge base found';
-      this.appendChatMessage('assistant', 'I could not find a stored official leaflet knowledge base for ' + record.name +
-        '. Take a photo first so MediClear can match and load it.');
+      this.appendChatMessage('assistant',
+        'I could not find a stored official leaflet knowledge base for ' + record.name +
+          '. Take a photo first so MediClear can match and load it.');
       console.error('[MediClearChat] history knowledge base lookup failed: ' + JSON.stringify(err));
     }
   }
@@ -4560,7 +4713,8 @@ struct Index {
 
     const lowerUri = uri.toLowerCase();
     if (lowerUri.endsWith('.pdf')) {
-      throw new Error('Mobile OCR now supports medicine photos only. For official PDF leaflets, use the matched RPL leaflet endpoint and backend PDF knowledge base.');
+      throw new Error(
+        'Mobile OCR now supports medicine photos only. For official PDF leaflets, use the matched RPL leaflet endpoint and backend PDF knowledge base.');
     }
 
     this.uploadState = 'OCR 2/4 Sending image for local text recognition...';
@@ -5606,7 +5760,8 @@ struct Index {
       this.pendingReminderPlanItems = [];
       this.pendingReminderPlanDuration = '';
       this.showReminderConfirmDialog = false;
-      this.reminderAlarmStatus = plan.warning.length > 0 ? plan.warning : 'Reminder was not created because the leaflet safety check needs attention.';
+      this.reminderAlarmStatus = plan.warning.length > 0 ? plan.warning :
+        'Reminder was not created because the leaflet safety check needs attention.';
       return;
     }
 
@@ -6011,7 +6166,8 @@ struct Index {
     }
 
     if (lower.indexOf('3-4') >= 0 || lower.indexOf('three to four') >= 0) {
-      parsed.howToTake = '2 capsules each time\n3-4 times per day\nBefore, during, or after meals\nCan be taken before sleep if needed';
+      parsed.howToTake =
+        '2 capsules each time\n3-4 times per day\nBefore, during, or after meals\nCan be taken before sleep if needed';
       parsed.reminderOneTime = '08:30';
       parsed.reminderOneLabel = 'With breakfast';
       parsed.reminderTwoTime = '19:30';
@@ -6023,7 +6179,8 @@ struct Index {
     }
 
     if (lower.indexOf('persistent') >= 0 || lower.indexOf('abdominal') >= 0) {
-      parsed.avoid = 'Consult a clinician if abdominal symptoms are new or persistent\nCheck excipients if you have allergy history';
+      parsed.avoid =
+        'Consult a clinician if abdominal symptoms are new or persistent\nCheck excipients if you have allergy history';
     }
 
     if (lower.indexOf('reaction') >= 0 || lower.indexOf('allergic') >= 0) {
@@ -6056,7 +6213,9 @@ struct Index {
     parsed.productId = this.extractRplEndpointId(record);
     parsed.matchedKeywords = this.buildMatchedKeywords(this.extractedOcrText, record);
     parsed.matchedPackage = record.packageInfo;
-    parsed.sourceNote = 'Source: local MediClear RDB match. RPL identifier: ' + record.rplIdentifier + '. Product endpoint id: ' + parsed.productId + '.';
+    parsed.sourceNote =
+      'Source: local MediClear RDB match. RPL identifier: ' + record.rplIdentifier + '. Product endpoint id: ' +
+        parsed.productId + '.';
     if (matchedName.indexOf('espumisan') < 0) {
       parsed.howToTake = '';
       parsed.contraindications = '';
