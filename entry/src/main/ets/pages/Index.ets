@@ -3665,6 +3665,15 @@ struct Index {
       if (!isChatUpload) {
         this.selectedGuide = 0;
       }
+      this.showHomeProcessingOverlay = false;
+      try {
+        this.getUIContext().getPromptAction().showToast({
+          message: 'Medicine ' + this.medicineName + ' loaded!',
+          duration: 1800
+        });
+      } catch (toastError) {
+        console.warn('[MediClearOCR] success toast failed: ' + JSON.stringify(toastError));
+      }
     } catch (err) {
       console.error('[MediClearOCR] OCR failed: ' + JSON.stringify(err));
       this.uploadState = 'Text extraction unavailable';
