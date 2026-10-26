@@ -630,6 +630,10 @@ struct Index {
         .width('100%')
       TextInput({ placeholder, text: value })
         .type(inputType)
+        .passwordIcon({
+          onIconSrc: $r('app.media.bi_eye_slash'),
+          offIconSrc: $r('app.media.bi_eye')
+        })
         .maxLength(maxLength)
         .fontSize(15)
         .fontColor('#142534')
