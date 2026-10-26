@@ -1,32 +1,80 @@
+import { common } from '@kit.AbilityKit';
 import fs from '@ohos.file.fs';
 import http from '@ohos.net.http';
+import { image } from '@kit.ImageKit';
+import { AuthService } from './AuthService';
 import { buildMedicineOcrUrl } from './BackendConfig';
 
 class MedicineImageOcrResponse {
   text: string = '';
 }
 
-export class MedicineImageOcrService {
-  async extractTextFromImage(path: string): Promise<string> {
-    const fileSize = fs.statSync(path).size;
-    if (fileSize <= 0) {
-      throw new Error('The selected image is empty');
-    }
-    if (fileSize > 10 * 1024 * 1024) {
-      throw new Error('Cloud OCR supports images up to 10 MB');
-    }
+class MedicineImageOcrErrorResponse {
+  error: string = '';
+}
 
-    const contentType = this.getContentType(path);
-    const fileName = path.substring(path.lastIndexOf('/') + 1);
+export class MedicineImageOcrService {
+  private context: common.UIAbilityContext;
+
+  constructor(context: common.UIAbilityContext) {
+    this.context = context;
+  }
+
+  async extractTextFromImage(path: string): Promise<string> {
+    const token = await AuthService.getValidAccessToken(this.context);
     const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+    let imageSource: image.ImageSource | undefined;
+    let pixelMap: image.PixelMap | undefined;
+    let imagePacker: image.ImagePacker | undefined;
     let imageData: ArrayBuffer;
     try {
-      imageData = new ArrayBuffer(fileSize);
-      const bytesRead = fs.readSync(file.fd, imageData);
-      if (bytesRead !== fileSize) {
-        throw new Error('Could not read the complete selected image');
+      const source = image.createImageSource(file.fd);
+      imageSource = source;
+      const imageInfo = await source.getImageInfo();
+      const sourceWidth = imageInfo.size.width;
+      const sourceHeight = imageInfo.size.height;
+      if (sourceWidth <= 0 || sourceHeight <= 0) {
+        throw new Error('The selected image has invalid dimensions');
       }
+
+      const maxDimension = 1600;
+      const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight));
+      const resizedPixelMap = await source.createPixelMap({
+        desiredSize: {
+          width: Math.max(1, Math.round(sourceWidth * scale)),
+          height: Math.max(1, Math.round(sourceHeight * scale))
+        }
+      });
+      pixelMap = resizedPixelMap;
+
+      const packer = image.createImagePacker();
+      imagePacker = packer;
+      imageData = await packer.packToData(resizedPixelMap, {
+        format: 'image/jpeg',
+        quality: 85
+      });
     } finally {
+      if (imagePacker) {
+        try {
+          await imagePacker.release();
+        } catch (error) {
+          console.warn('[MediClearOCR] failed to release image packer: ' + JSON.stringify(error));
+        }
+      }
+      if (pixelMap) {
+        try {
+          await pixelMap.release();
+        } catch (error) {
+          console.warn('[MediClearOCR] failed to release pixel map: ' + JSON.stringify(error));
+        }
+      }
+      if (imageSource) {
+        try {
+          await imageSource.release();
+        } catch (error) {
+          console.warn('[MediClearOCR] failed to release image source: ' + JSON.stringify(error));
+        }
+      }
       fs.closeSync(file.fd);
     }
 
@@ -36,9 +84,10 @@ export class MedicineImageOcrService {
         method: http.RequestMethod.POST,
         header: {
           'Content-Type': 'application/octet-stream',
-          'X-File-Name': fileName,
-          'X-File-Type': contentType,
-          'Accept': 'application/json'
+          'X-File-Name': 'medicine-image.jpg',
+          'X-File-Type': 'image/jpeg',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + token
         },
         extraData: imageData,
         expectDataType: http.HttpDataType.STRING,
@@ -47,7 +96,15 @@ export class MedicineImageOcrService {
       });
 
       if (response.responseCode !== 200) {
-        throw new Error('Cloud OCR request failed: ' + response.responseCode.toString());
+        let errorMessage = 'Local OCR request failed: ' + response.responseCode.toString();
+        try {
+          const errorResult = JSON.parse(response.result.toString()) as MedicineImageOcrErrorResponse;
+          if (typeof errorResult.error === 'string' && errorResult.error.length > 0) {
+            errorMessage = errorResult.error;
+          }
+        } catch (_error) {
+        }
+        throw new Error(errorMessage);
       }
 
       const result = JSON.parse(response.result.toString()) as MedicineImageOcrResponse;
@@ -55,25 +112,5 @@ export class MedicineImageOcrService {
     } finally {
       request.destroy();
     }
-  }
-
-  private getContentType(path: string): string {
-    const lowerPath = path.toLowerCase();
-    if (lowerPath.endsWith('.png')) {
-      return 'image/png';
-    }
-    if (lowerPath.endsWith('.webp')) {
-      return 'image/webp';
-    }
-    if (lowerPath.endsWith('.bmp')) {
-      return 'image/bmp';
-    }
-    if (lowerPath.endsWith('.gif')) {
-      return 'image/gif';
-    }
-    if (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg')) {
-      return 'image/jpeg';
-    }
-    throw new Error('Cloud OCR does not support this image format');
   }
 }

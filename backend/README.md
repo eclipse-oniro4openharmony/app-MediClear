@@ -4,7 +4,7 @@ This backend keeps PDF processing and PDF-derived knowledge-base data outside th
 
 The first backend capability is PDF knowledge-base preparation. It downloads official leaflet PDFs, extracts readable text, splits that text into chunks, stores the chunks in MongoDB, and does not persist the source PDF.
 
-The backend also provides `POST /api/ocr` for medicine-image OCR. It accepts an `application/octet-stream` image body and forwards it as multipart form data to UApiPro. Photos are processed in memory and are not stored by this backend. The upstream OCR API accepts images up to 10 MB; cloud OCR availability is required for image text extraction.
+The backend also provides `POST /api/ocr` for medicine-image OCR. It accepts an `application/octet-stream` image body and forwards it as Base64 JSON to the private PaddleOCR service in Docker Compose. PaddleOCR uses the PP-OCRv6 medium pipeline on CPU by default. Photos are processed in memory and are not stored by the backend.
 
 ## Runtime Flow
 
@@ -22,6 +22,20 @@ MongoDB stores document metadata + text chunks + text index
 PDF buffer is discarded
 ```
 
+Medicine image OCR follows this flow:
+
+```text
+MediClear app resizes and JPEG-encodes the photo
+        ↓
+POST /api/ocr to MediClear backend
+        ↓
+Backend forwards Base64 JSON over the private Compose network
+        ↓
+PaddleX Serving runs the PP-OCRv6 OCR pipeline
+        ↓
+Backend returns recognized text; image data is not persisted
+```
+
 ## Start With Docker
 
 Copy the example environment file if you want to customize ports or MongoDB settings:
@@ -30,7 +44,9 @@ Copy the example environment file if you want to customize ports or MongoDB sett
 cp .env.example .env
 ```
 
-Configure the chat model in `backend/.env`.
+Configure the chat model in `backend/.env` if chat completion is needed. The OCR service is included in Compose and requires no API key.
+
+Set a stable `AUTH_TOKEN_SECRET` with at least 32 random characters and configure the `SMTP_*` values before enabling user registration. For local-only testing, set `NODE_ENV=development` and `AUTH_EMAIL_MODE=console`; verification codes will be written to backend logs instead of sent by email. Do not use console email mode in production.
 
 For the current DeepSeek setup:
 
@@ -70,6 +86,7 @@ http://localhost:18080
 ```
 
 MongoDB data is stored in the Docker volume `mediclear_mongo_data`.
+PP-OCRv6 model files are cached in the Docker volume `paddleocr_model_cache`. On the first start, PaddleOCR downloads its model files; later starts reuse the volume. The PaddleOCR container is only reachable on the internal Compose network and its port is not published to the host.
 
 The database is text-search oriented:
 
@@ -123,6 +140,32 @@ If the phone cannot connect:
 ```http
 GET /health
 ```
+
+### Medicine Photo OCR
+
+```http
+POST /api/ocr
+Content-Type: application/octet-stream
+X-File-Type: image/jpeg
+
+<JPEG image bytes>
+```
+
+The response is `{ "text": "..." }`. The backend converts the image body to Base64 for PaddleX's `POST /ocr` API and returns only recognized text to the app.
+
+### Authentication
+
+Authentication endpoints:
+
+- `POST /api/auth/register` — create a pending account and send an email verification code.
+- `POST /api/auth/verify-email` — verify an email address with its six-digit code.
+- `POST /api/auth/login` — return a short-lived access token and refresh token.
+- `POST /api/auth/refresh` — rotate a refresh token and return a new access/refresh token pair.
+- `POST /api/auth/logout` — revoke a refresh token.
+- `POST /api/auth/forgot-password` — send a password reset code without revealing whether an account exists.
+- `POST /api/auth/reset-password` — change a password using the emailed code and revoke existing refresh sessions.
+
+All other `/api/*` routes require `Authorization: Bearer <access-token>`. `/health` remains public. User accounts and refresh sessions are stored in MongoDB; access tokens expire after 15 minutes and refresh tokens expire after 30 days.
 
 ### Extract RPL Leaflet
 

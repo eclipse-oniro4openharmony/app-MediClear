@@ -15,3 +15,4 @@
 /data/rpl_cache.sqlite
 /output/
 /backend/.env
+/backend/node_modules/

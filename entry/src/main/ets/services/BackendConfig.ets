@@ -4,6 +4,34 @@ export const MEDICLEAR_BACKEND_BASE_URL: string = 'http://192.168.123.131:18080'
 
 export const MEDICLEAR_BACKEND_HEALTH_URL: string = `${MEDICLEAR_BACKEND_BASE_URL}/health`;
 
+export function buildAuthRegisterUrl(): string {
+  return `${MEDICLEAR_BACKEND_BASE_URL}/api/auth/register`;
+}
+
+export function buildAuthVerifyEmailUrl(): string {
+  return `${MEDICLEAR_BACKEND_BASE_URL}/api/auth/verify-email`;
+}
+
+export function buildAuthLoginUrl(): string {
+  return `${MEDICLEAR_BACKEND_BASE_URL}/api/auth/login`;
+}
+
+export function buildAuthRefreshUrl(): string {
+  return `${MEDICLEAR_BACKEND_BASE_URL}/api/auth/refresh`;
+}
+
+export function buildAuthLogoutUrl(): string {
+  return `${MEDICLEAR_BACKEND_BASE_URL}/api/auth/logout`;
+}
+
+export function buildAuthForgotPasswordUrl(): string {
+  return `${MEDICLEAR_BACKEND_BASE_URL}/api/auth/forgot-password`;
+}
+
+export function buildAuthResetPasswordUrl(): string {
+  return `${MEDICLEAR_BACKEND_BASE_URL}/api/auth/reset-password`;
+}
+
 export function buildRplDocumentExtractUrl(): string {
   return `${MEDICLEAR_BACKEND_BASE_URL}/api/documents/rpl`;
 }

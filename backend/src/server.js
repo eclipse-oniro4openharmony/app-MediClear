@@ -13,6 +13,7 @@ import {
 } from './database.js';
 import { askDeepSeekWithKnowledgeBase } from './deepseekClient.js';
 import { extractPdfText, downloadPdf, sha256, splitIntoChunks } from './pdfTextExtractor.js';
+import { createAuthRouter, requireAuth } from './auth.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -83,6 +84,9 @@ app.get('/health', (_request, response) => {
   });
 });
 
+app.use('/api/auth', createAuthRouter());
+app.use('/api', requireAuth);
+
 app.post('/api/ocr', express.raw({ type: 'application/octet-stream', limit: '10mb' }), async (request, response, next) => {
   try {
     if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
@@ -103,31 +107,51 @@ app.post('/api/ocr', express.raw({ type: 'application/octet-stream', limit: '10m
       return;
     }
 
-    const rawFileName = request.get('x-file-name') ?? 'medicine-image';
-    const fileName = rawFileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'medicine-image';
-    const form = new FormData();
-    form.append('file', new Blob([request.body], { type: contentType }), fileName);
-    form.append('need_location', 'false');
-    form.append('return_markdown', 'false');
-    form.append('enable_cls', 'true');
+    let ocrResponse;
+    try {
+      ocrResponse = await fetch(`${config.ocrServiceUrl.replace(/\/$/, '')}/ocr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          file: request.body.toString('base64'),
+          fileType: 1,
+          useDocOrientationClassify: false,
+          useDocUnwarping: false,
+          useTextlineOrientation: false,
+          visualize: false
+        }),
+        signal: AbortSignal.timeout(config.ocrTimeoutMs)
+      });
+    } catch (error) {
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        console.warn('[ocr] local PaddleOCR request timed out or was aborted');
+        response.status(504).json({ error: 'Local OCR service timed out or was aborted' });
+        return;
+      }
+      console.warn('[ocr] local PaddleOCR service is unavailable', error);
+      response.status(502).json({ error: 'Local OCR service is unavailable' });
+      return;
+    }
 
-    const ocrResponse = await fetch('https://uapis.cn/api/v1/image/ocr', {
-      method: 'POST',
-      body: form,
-      signal: AbortSignal.timeout(60000)
-    });
     const result = await ocrResponse.json().catch(() => null);
-    if (!ocrResponse.ok) {
-      console.warn(`[ocr] provider returned status ${ocrResponse.status}`);
-      response.status(502).json({ error: 'External OCR service failed' });
+    if (!ocrResponse.ok || result?.errorCode !== 0) {
+      console.warn(`[ocr] PaddleOCR returned status=${ocrResponse.status} errorCode=${result?.errorCode}`);
+      response.status(502).json({ error: 'Local OCR service failed' });
       return;
     }
 
-    const text = typeof result?.plain_text === 'string' ? result.plain_text : result?.text;
-    if (typeof text !== 'string') {
-      response.status(502).json({ error: 'External OCR response did not contain text' });
+    const pages = result?.result?.ocrResults;
+    if (!Array.isArray(pages)) {
+      response.status(502).json({ error: 'Local OCR response did not contain results' });
       return;
     }
+
+    const text = pages.flatMap((page) => {
+      const pageTexts = page?.prunedResult?.rec_texts;
+      return Array.isArray(pageTexts)
+        ? pageTexts.filter((item) => typeof item === 'string' && item.trim().length > 0)
+        : [];
+    }).join('\n');
 
     response.json({ text });
   } catch (error) {
@@ -1296,7 +1320,7 @@ app.use((error, _request, response, _next) => {
   if (error instanceof z.ZodError) {
     response.status(400).json({
       error: 'Invalid request',
-      details: error.errors
+      details: error.issues
     });
     return;
   }

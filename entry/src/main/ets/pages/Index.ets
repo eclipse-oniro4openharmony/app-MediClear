@@ -9,6 +9,7 @@ import { RplMedicineRecord } from '../database/RplMedicineRecord';
 import { MedicineImageOcrService } from '../services/MedicineImageOcrService';
 import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
 import { MedicineReminderNotificationService } from '../services/MedicineReminderNotificationService';
+import { AuthService, AuthUser } from '../services/AuthService';
 import {
   BackendService,
   BackendChatResponse,
@@ -210,6 +211,17 @@ class MedicineChatMessage {
 @Entry
 @Component
 struct Index {
+  @State authReady: boolean = false;
+  @State isAuthenticated: boolean = false;
+  @State authMode: string = 'login';
+  @State authEmail: string = '';
+  @State authPassword: string = '';
+  @State authConfirmPassword: string = '';
+  @State authCode: string = '';
+  @State authError: string = '';
+  @State authNotice: string = '';
+  @State authBusy: boolean = false;
+  @State currentUserEmail: string = '';
   @State currentTab: number = 0;
   @State selectedGuide: number = 0;
   @State showUploadSheet: boolean = false;
@@ -298,12 +310,10 @@ struct Index {
   @State historyDetailStatus: string = '';
   @State settingsDetailPage: string = '';
   @State homeMedicineSearchQuery: string = '';
-
   private sexOptions: SelectOption[] = [
     { value: 'Male' },
     { value: 'Female' }
   ];
-
   private allergyOptions: SelectOption[] = [
     { value: 'None' },
     { value: 'Penicillin' },
@@ -330,18 +340,15 @@ struct Index {
     { value: 'Pollen' },
     { value: 'Dust mites' }
   ];
-
   private actions: ActionItem[] = [
     new ActionItem('Upload Medicine Guide', 'Scan leaflet or upload PDF', $r('app.media.bi_cloud_upload'), '#009F9A'),
     new ActionItem('My Reminders', 'View and manage schedule', $r('app.media.bi_bell'), '#1767C5'),
     new ActionItem('Medicine History', 'Past medicines and guides', $r('app.media.bi_clock_history'), '#6554D9')
   ];
-
   private reminders: ReminderItem[] = [
     new ReminderItem('08:30', 'After breakfast', '1 tablet', $r('app.media.bi_sun'), '#009F9A', '#E7FAF6'),
     new ReminderItem('19:30', 'After dinner', '1 tablet', $r('app.media.bi_bell'), '#5648D9', '#F0EEFF')
   ];
-
   private historyPreferencesName: string = 'mediclear_history';
   private historyPreferencesKey: string = 'medicine_history';
   private reminderPreferencesName: string = 'mediclear_reminders';
@@ -352,6 +359,8 @@ struct Index {
   private reminderAlertTimer: number = -1;
   private reminderPermissionRequested: boolean = false;
   private lastReminderAlertKey: string = '';
+  private authRestoreStarted: boolean = false;
+  private currentUserId: string = '';
 
   aboutToAppear(): void {
     const now = new Date();
@@ -374,9 +383,14 @@ struct Index {
       .setUlPointSize(4);
     this.chatMarkdownController.setBlockSpacing(6);
     this.reminderNotificationService.setContext(getContext(this) as common.UIAbilityContext);
-    this.requestReminderNotificationPermissionOnce();
-    this.loadMedicineHistory();
-    this.loadMedicineReminders();
+  }
+
+  onPageShow(): void {
+    if (this.authRestoreStarted) {
+      return;
+    }
+    this.authRestoreStarted = true;
+    this.restoreAuthSession();
   }
 
   aboutToDisappear(): void {
@@ -410,7 +424,12 @@ struct Index {
                 this.ProfileView()
               }
             }
-            .padding({ left: 20, right: 20, top: this.contentTopPadding(), bottom: 92 })
+            .padding({
+              left: 20,
+              right: 20,
+              top: this.contentTopPadding(),
+              bottom: 92
+            })
             .width('100%')
             .constraintSize({ minHeight: '100%' })
             .justifyContent(FlexAlign.Start)
@@ -451,10 +470,455 @@ struct Index {
       if (this.showHomeProcessingOverlay && this.currentTab === 0) {
         this.MedicineProcessingOverlay()
       }
+
+      if (!this.authReady || !this.isAuthenticated) {
+        this.AuthGate()
+      }
     }
     .width('100%')
     .height('100%')
     .backgroundColor('#F6FBFC')
+  }
+
+  @Builder
+  AuthGate() {
+    Column() {
+      Scroll() {
+        Column({ space: 18 }) {
+          Row({ space: 5 }) {
+            this.LogoMark(54)
+            Text('MediClear')
+              .fontSize(28)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#12313A')
+          }
+          .alignItems(VerticalAlign.Center)
+
+          Text('Your medicine guides, reminders, and health notes')
+            .fontSize(14)
+            .fontColor('#5D7179')
+            .textAlign(TextAlign.Center)
+            .width('100%')
+            .margin({
+              bottom: 50
+            })
+
+          if (!this.authReady) {
+            LoadingProgress()
+              .color('#009F9A')
+              .width(40)
+              .height(40)
+            Text('Restoring your session...')
+              .fontSize(14)
+              .fontColor('#536575')
+          } else {
+            this.AuthForm()
+          }
+        }
+        .width('100%')
+        .padding({
+          left: 24,
+          right: 24,
+          top: 48,
+          bottom: 36
+        })
+        .alignItems(HorizontalAlign.Center)
+      }
+      .width('100%')
+      .height('100%')
+      .scrollBar(BarState.Off)
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor('#F6FBFC')
+  }
+
+  @Builder
+  AuthForm() {
+    Column({ space: 14 }) {
+      Text(this.authPageTitle())
+        .fontSize(21)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#142534')
+        .width('100%')
+        .textAlign(TextAlign.Center)
+
+      if (this.authNotice.length > 0) {
+        Text(this.authNotice)
+          .fontSize(13)
+          .fontColor('#087F70')
+          .lineHeight(19)
+          .width('100%')
+          .textAlign(TextAlign.Center)
+      }
+
+      if (this.authMode !== 'verify-email') {
+        this.AuthTextInput('Email', 'you@example.com', this.authEmail, 'email', InputType.Email, 254)
+      }
+
+      if (this.authMode === 'login' || this.authMode === 'register') {
+        this.AuthTextInput('Password', 'At least 12 characters', this.authPassword, 'password',
+          InputType.Password, 128)
+      }
+
+      if (this.authMode === 'register') {
+        this.AuthTextInput('Confirm password', 'Enter the password again', this.authConfirmPassword,
+          'confirmPassword', InputType.Password, 128)
+      }
+
+      if (this.authMode === 'verify-email' || this.authMode === 'reset-password') {
+        this.AuthTextInput('Email code', 'Six-digit code', this.authCode, 'code', InputType.Number, 6)
+      }
+
+      if (this.authMode === 'reset-password') {
+        this.AuthTextInput('New password', 'At least 12 characters', this.authPassword, 'password',
+          InputType.Password, 128)
+      }
+
+      if (this.authError.length > 0) {
+        Text(this.authError)
+          .fontSize(13)
+          .fontColor('#B42318')
+          .lineHeight(19)
+          .width('100%')
+      }
+
+      Button(this.authActionLabel())
+        .fontSize(15)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(Color.White)
+        .backgroundColor('#008A88')
+        .borderRadius(12)
+        .height(50)
+        .width('100%')
+        .enabled(!this.authBusy)
+        .onClick(() => {
+          this.submitAuthAction();
+        })
+
+      if (this.authBusy) {
+        LoadingProgress()
+          .color('#009F9A')
+          .width(28)
+          .height(28)
+      }
+
+      if (this.authMode === 'login') {
+        Row({ space: 18 }) {
+          Text('Create account')
+            .fontSize(13)
+            .fontColor('#087F70')
+            .onClick(() => this.changeAuthMode('register'))
+          Text('Forgot password?')
+            .fontSize(13)
+            .fontColor('#1767C5')
+            .onClick(() => this.changeAuthMode('forgot-password'))
+        }
+        .justifyContent(FlexAlign.Center)
+        .width('100%')
+      } else if (this.authMode !== 'login') {
+        Text('Back to sign in')
+          .fontSize(13)
+          .fontColor('#087F70')
+          .onClick(() => this.changeAuthMode('login'))
+      }
+    }
+    .padding(20)
+    .backgroundColor(Color.White)
+    .border({ width: 1, color: '#DCEBED' })
+    .borderRadius(18)
+    .width('100%')
+  }
+
+  @Builder
+  AuthTextInput(label: string, placeholder: string, value: string, field: string, inputType: InputType,
+    maxLength: number) {
+    Column({ space: 6 }) {
+      Text(label)
+        .fontSize(13)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#324B55')
+        .width('100%')
+      TextInput({ placeholder, text: value })
+        .type(inputType)
+        .passwordIcon({
+          onIconSrc: $r('app.media.bi_eye_slash'),
+          offIconSrc: $r('app.media.bi_eye')
+        })
+        .maxLength(maxLength)
+        .fontSize(15)
+        .fontColor('#142534')
+        .placeholderColor('#8A98A8')
+        .height(48)
+        .padding({ left: 12, right: 12 })
+        .backgroundColor('#F8FCFC')
+        .border({ width: 1, color: '#DCEBED' })
+        .borderRadius(10)
+        .onChange((input: string) => this.updateAuthField(field, input))
+    }
+    .width('100%')
+  }
+
+  private authPageTitle(): string {
+    if (this.authMode === 'register') {
+      return 'Create your account';
+    }
+    if (this.authMode === 'verify-email') {
+      return 'Verify your email';
+    }
+    if (this.authMode === 'forgot-password') {
+      return 'Reset your password';
+    }
+    if (this.authMode === 'reset-password') {
+      return 'Choose a new password';
+    }
+    return 'Sign in';
+  }
+
+  private authActionLabel(): string {
+    if (this.authMode === 'register') {
+      return 'Create account';
+    }
+    if (this.authMode === 'verify-email') {
+      return 'Confirm';
+    }
+    if (this.authMode === 'forgot-password') {
+      return 'Send reset code';
+    }
+    if (this.authMode === 'reset-password') {
+      return 'Reset password';
+    }
+    return 'Sign in';
+  }
+
+  private changeAuthMode(mode: string): void {
+    this.authMode = mode;
+    this.authError = '';
+    this.authNotice = '';
+    this.authCode = '';
+    this.authPassword = '';
+    this.authConfirmPassword = '';
+  }
+
+  private updateAuthField(field: string, value: string): void {
+    if (field === 'email') {
+      this.authEmail = value;
+    } else if (field === 'password') {
+      this.authPassword = value;
+    } else if (field === 'confirmPassword') {
+      this.authConfirmPassword = value;
+    } else if (field === 'code') {
+      this.authCode = value;
+    }
+  }
+
+  private async restoreAuthSession(): Promise<void> {
+    this.authBusy = true;
+    try {
+      const user = await AuthService.restoreSession(getContext(this) as common.UIAbilityContext);
+      if (user) {
+        await this.activateAuthenticatedUser(user);
+      } else {
+        this.authReady = true;
+      }
+    } catch (error) {
+      this.authError = 'Could not restore your session. Check the backend connection and sign in again.';
+      console.warn('[MediClearAuth] session restore failed: ' + JSON.stringify(error));
+      this.authReady = true;
+    } finally {
+      this.authBusy = false;
+    }
+  }
+
+  private async submitAuthAction(): Promise<void> {
+    if (this.authBusy) {
+      return;
+    }
+    this.authError = '';
+    this.authNotice = '';
+    const email = this.authEmail.trim().toLowerCase();
+    if (email.length === 0) {
+      this.authError = 'Enter your email address.';
+      return;
+    }
+
+    this.authBusy = true;
+    try {
+      if (this.authMode === 'register') {
+        if (this.authPassword.length < 12) {
+          this.authError = 'Use a password with at least 12 characters.';
+          return;
+        }
+        if (this.authPassword !== this.authConfirmPassword) {
+          this.authError = 'The passwords do not match.';
+          return;
+        }
+        await AuthService.register(email, this.authPassword);
+        this.authEmail = email;
+        this.authPassword = '';
+        this.authConfirmPassword = '';
+        this.authMode = 'verify-email';
+        this.authNotice = 'A six-digit verification code was sent to your email.';
+      } else if (this.authMode === 'verify-email') {
+        await AuthService.verifyEmail(email, this.authCode.trim());
+        this.authMode = 'login';
+        this.authPassword = '';
+        this.authCode = '';
+        this.authNotice = 'Email verified. Sign in to continue.';
+      } else if (this.authMode === 'forgot-password') {
+        await AuthService.requestPasswordReset(email);
+        this.authMode = 'reset-password';
+        this.authCode = '';
+        this.authNotice = 'If the account exists, a reset code has been sent.';
+      } else if (this.authMode === 'reset-password') {
+        if (this.authPassword.length < 12) {
+          this.authError = 'Use a password with at least 12 characters.';
+          return;
+        }
+        await AuthService.resetPassword(email, this.authCode.trim(), this.authPassword);
+        this.authMode = 'login';
+        this.authPassword = '';
+        this.authCode = '';
+        this.authNotice = 'Password reset. Sign in with your new password.';
+      } else {
+        const user = await AuthService.login(getContext(this) as common.UIAbilityContext, email, this.authPassword);
+        await this.activateAuthenticatedUser(user);
+      }
+    } catch (error) {
+      this.authError = this.formatError(error);
+    } finally {
+      this.authBusy = false;
+    }
+  }
+
+  private async activateAuthenticatedUser(user: AuthUser): Promise<void> {
+    this.clearAccountData();
+    await this.migrateLegacyLocalData(user.id);
+    this.currentUserId = user.id;
+    this.currentUserEmail = user.email;
+    this.historyPreferencesName = 'mediclear_history_' + user.id;
+    this.reminderPreferencesName = 'mediclear_reminders_' + user.id;
+    this.reminderNotificationService.setContext(getContext(this) as common.UIAbilityContext);
+    await this.loadMedicineHistory();
+    await this.loadMedicineReminders();
+    this.requestReminderNotificationPermissionOnce();
+    this.isAuthenticated = true;
+    this.authReady = true;
+    this.authMode = 'login';
+    this.authPassword = '';
+    this.authConfirmPassword = '';
+    this.authError = '';
+    this.authNotice = '';
+  }
+
+  private async migrateLegacyLocalData(userId: string): Promise<void> {
+    const context = getContext(this);
+    const authStore = await preferences.getPreferences(context, 'mediclear_auth_session');
+    const migrationDone = (await authStore.get('legacy_data_migrated', false)).toString() === 'true';
+    if (migrationDone) {
+      return;
+    }
+
+    const legacyHistory = await preferences.getPreferences(context, 'mediclear_history');
+    const legacyReminders = await preferences.getPreferences(context, 'mediclear_reminders');
+    const accountHistory = await preferences.getPreferences(context, 'mediclear_history_' + userId);
+    const accountReminders = await preferences.getPreferences(context, 'mediclear_reminders_' + userId);
+    const historyValue = (await legacyHistory.get('medicine_history', '')).toString();
+    const reminderValue = (await legacyReminders.get('medicine_reminders', '')).toString();
+
+    if (historyValue.length > 0 && (await accountHistory.get('medicine_history', '')).toString().length === 0) {
+      await accountHistory.put('medicine_history', historyValue);
+      await accountHistory.flush();
+    }
+    if (reminderValue.length > 0 && (await accountReminders.get('medicine_reminders', '')).toString().length === 0) {
+      await accountReminders.put('medicine_reminders', reminderValue);
+      await accountReminders.flush();
+    }
+
+    await authStore.put('legacy_data_migrated', true);
+    await authStore.flush();
+  }
+
+  private clearAccountData(): void {
+    this.clearReminderAlertTimer();
+    this.reminderNotificationService.stopActiveReminderAlert();
+    this.currentTab = 0;
+    this.showBasicsForm = false;
+    this.showUploadSheet = false;
+    this.showHomeProcessingOverlay = false;
+    this.showReminderConfirmDialog = false;
+    this.showDuplicateReminderDialog = false;
+    this.showReminderTimeDialog = false;
+    this.showHistoryDetail = false;
+    this.activeReminderAlertVisible = false;
+    this.selectedGuideUri = '';
+    this.extractedOcrText = '';
+    this.uploadState = 'No medicine guide scanned yet';
+    this.uploadSource = 'Tap Upload Medicine Guide to scan a medicine leaflet.';
+    this.medicines = [];
+    this.reminderPlanItems = [];
+    this.pendingReminderPlanItems = [];
+    this.pendingReminderPlanSummary = '';
+    this.pendingReminderPlanWarning = '';
+    this.pendingReminderPlanDuration = '';
+    this.chatMessages = [];
+    this.chatQuestion = '';
+    this.chatStatus = 'No active knowledge base';
+    this.medicineName = '';
+    this.medicineSubtitle = '';
+    this.activeIngredient = '';
+    this.ingredientNote = '';
+    this.howToTake = '';
+    this.contraindications = '';
+    this.avoidWarnings = '';
+    this.doctorWarnings = '';
+    this.sideEffectOne = '';
+    this.sideEffectTwo = '';
+    this.sideEffectThree = '';
+    this.basicGender = '';
+    this.basicAge = '';
+    this.basicWeight = '';
+    this.basicSymptoms = '';
+    this.basicAllergyHistory = '';
+    this.basicSpecialStatus = '';
+    this.basicCustomAllergy = '';
+    this.homeMedicineSearchQuery = '';
+    this.historySearchQuery = '';
+    this.productId = '';
+    this.rplIdentifier = '';
+    this.matchedKeywords = '';
+    this.matchedPackage = '';
+    this.backendKnowledgeDocumentId = '';
+    this.backendKnowledgeTextLength = '';
+    this.backendKnowledgeStatus = '';
+    this.reminderPlanStatus = 'Upload a medicine guide to generate reminders.';
+    this.reminderPlanWarning = '';
+    this.reminderAlarmStatus = 'No reminder plan set yet.';
+    this.sourceNote = '';
+    this.leafletUrl = '';
+    this.characteristicUrl = '';
+    this.settingsDetailPage = '';
+  }
+
+  private async signOut(): Promise<void> {
+    try {
+      await AuthService.logout(getContext(this) as common.UIAbilityContext);
+    } catch (error) {
+      console.warn('[MediClearAuth] sign out failed: ' + JSON.stringify(error));
+    }
+    this.clearAccountData();
+    this.currentUserId = '';
+    this.currentUserEmail = '';
+    this.authEmail = '';
+    this.authPassword = '';
+    this.authConfirmPassword = '';
+    this.authCode = '';
+    this.authError = '';
+    this.authNotice = '';
+    this.authMode = 'login';
+    this.isAuthenticated = false;
+    this.authReady = true;
   }
 
   private handleSectionAction(actionKey: string): void {
@@ -747,7 +1211,12 @@ struct Index {
     }
     .width('100%')
     .height(64)
-    .padding({ left: 20, right: 20, top: 10, bottom: 8 })
+    .padding({
+      left: 20,
+      right: 20,
+      top: 10,
+      bottom: 8
+    })
     .backgroundColor('#F6FBFC')
   }
 
@@ -786,7 +1255,7 @@ struct Index {
       if (this.medicines.length > 0) {
         Column({ space: 10 }) {
           ForEach(this.homeRecentMedicines(), (item: MedicineRecord) => {
-          this.MedicineMiniCard(item)
+            this.MedicineMiniCard(item)
           }, (item: MedicineRecord) => this.historyRecordKey(item))
         }
         .width('100%')
@@ -839,8 +1308,8 @@ struct Index {
           void this.searchMedicineFromHome();
         })
     }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
   }
 
   @Builder
@@ -888,12 +1357,20 @@ struct Index {
             .fontSize(11)
             .fontWeight(FontWeight.Medium)
             .fontColor('#007D83')
-            .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+            .padding({
+              left: 8,
+              right: 8,
+              top: 4,
+              bottom: 4
+            })
             .backgroundColor('#DDF7F5')
             .borderRadius(10)
         }
         .width('100%')
-        Text(this.hasCompletedBasics() ? 'Your health context is saved for medicine leaflet answers. Tap here anytime to edit it.' : 'Add sex, age, weight, current symptoms, allergy history, and special status so the chat assistant can explain medicine leaflet warnings with better context.')
+
+        Text(this.hasCompletedBasics() ?
+          'Your health context is saved for medicine leaflet answers. Tap here anytime to edit it.' :
+          'Add sex, age, weight, current symptoms, allergy history, and special status so the chat assistant can explain medicine leaflet warnings with better context.')
           .fontSize(13)
           .fontColor('#42566F')
           .lineHeight(18)
@@ -907,6 +1384,7 @@ struct Index {
         }
       }
       .layoutWeight(1)
+
       this.ChevronRight('#008A88')
     }
     .padding(14)
@@ -948,9 +1426,12 @@ struct Index {
         this.BasicsSexPicker()
         this.BasicsTextInput('Age', 'e.g. 22', this.basicAge, 'age', true)
         this.BasicsTextInput('Weight(kg)', 'e.g. 60', this.basicWeight, 'weight', true)
-        this.BasicsTextArea('Current symptoms', 'Describe what you feel now, such as stomach pain, fever, bloating, duration, and severity.', this.basicSymptoms, 'symptoms')
+        this.BasicsTextArea('Current symptoms',
+          'Describe what you feel now, such as stomach pain, fever, bloating, duration, and severity.',
+          this.basicSymptoms, 'symptoms')
         this.BasicsAllergyPicker()
-        this.BasicsTextInput('Special status', 'e.g. pregnant, trying to conceive, breastfeeding, none', this.basicSpecialStatus, 'specialStatus', false)
+        this.BasicsTextInput('Special status', 'e.g. pregnant, trying to conceive, breastfeeding, none',
+          this.basicSpecialStatus, 'specialStatus', false)
       }
       .padding(16)
       .backgroundColor(Color.White)
@@ -1024,6 +1505,7 @@ struct Index {
       .onClick(() => {
         this.showBasicsForm = false;
       })
+
       Text('Basics')
         .fontSize(19)
         .fontWeight(FontWeight.Bold)
@@ -1073,20 +1555,20 @@ struct Index {
         .onSelect((index: number, value: string) => {
           this.basicGender = value;
         })
-      .menuAlign(MenuAlignType.START)
-      .optionWidth(OptionWidthMode.FIT_TRIGGER)
-      .width('100%')
-      .height(46)
-      .padding({ left: 12, right: 12 })
-      .backgroundColor('#F8FCFC')
-      .border({ width: 1, color: '#DCEBED' })
-      .borderRadius(10)
-      .stateStyles({
-        pressed: {
-          .opacity(0.86)
-          .scale({ x: 0.98, y: 0.98 })
-        }
-      })
+        .menuAlign(MenuAlignType.START)
+        .optionWidth(OptionWidthMode.FIT_TRIGGER)
+        .width('100%')
+        .height(46)
+        .padding({ left: 12, right: 12 })
+        .backgroundColor('#F8FCFC')
+        .border({ width: 1, color: '#DCEBED' })
+        .borderRadius(10)
+        .stateStyles({
+          pressed: {
+            .opacity(0.86)
+            .scale({ x: 0.98, y: 0.98 })
+          }
+        })
     }
     .width('100%')
   }
@@ -1100,7 +1582,12 @@ struct Index {
         .fontColor('#111827')
         .placeholderColor('#8A98A8')
         .height(108)
-        .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+        .padding({
+          left: 12,
+          right: 12,
+          top: 10,
+          bottom: 10
+        })
         .backgroundColor('#F8FCFC')
         .border({ width: 1, color: '#DCEBED' })
         .borderRadius(10)
@@ -1127,21 +1614,21 @@ struct Index {
         .onSelect((index: number, value: string) => {
           this.appendBasicAllergy(value);
         })
-      .menuAlign(MenuAlignType.START)
-      .optionWidth(OptionWidthMode.FIT_TRIGGER)
-      .optionHeight(220)
-      .width('100%')
-      .height(46)
-      .padding({ left: 12, right: 12 })
-      .backgroundColor('#F8FCFC')
-      .border({ width: 1, color: '#DCEBED' })
-      .borderRadius(10)
-      .stateStyles({
-        pressed: {
-          .opacity(0.86)
-          .scale({ x: 0.98, y: 0.98 })
-        }
-      })
+        .menuAlign(MenuAlignType.START)
+        .optionWidth(OptionWidthMode.FIT_TRIGGER)
+        .optionHeight(220)
+        .width('100%')
+        .height(46)
+        .padding({ left: 12, right: 12 })
+        .backgroundColor('#F8FCFC')
+        .border({ width: 1, color: '#DCEBED' })
+        .borderRadius(10)
+        .stateStyles({
+          pressed: {
+            .opacity(0.86)
+            .scale({ x: 0.98, y: 0.98 })
+          }
+        })
 
       if (this.basicAllergyHistory.length > 0) {
         Flex({ wrap: FlexWrap.Wrap, direction: FlexDirection.Row }) {
@@ -1172,19 +1659,19 @@ struct Index {
             .height(18)
             .fillColor(Color.White)
         }
-          .backgroundColor('#009F9A')
-          .borderRadius(10)
-          .width(42)
-          .height(42)
-          .stateStyles({
-            pressed: {
-              .opacity(0.82)
-              .scale({ x: 0.94, y: 0.94 })
-            }
-          })
-          .onClick(() => {
-            this.addCustomBasicAllergy();
-          })
+        .backgroundColor('#009F9A')
+        .borderRadius(10)
+        .width(42)
+        .height(42)
+        .stateStyles({
+          pressed: {
+            .opacity(0.82)
+            .scale({ x: 0.94, y: 0.94 })
+          }
+        })
+        .onClick(() => {
+          this.addCustomBasicAllergy();
+        })
       }
       .width('100%')
     }
@@ -1220,20 +1707,25 @@ struct Index {
         .height(14)
         .fillColor('#007D83')
     }
-      .padding({ left: 12, right: 9, top: 7, bottom: 7 })
-      .backgroundColor('#E8F8F6')
-      .border({ width: 1, color: '#B7DFDC' })
-      .borderRadius(16)
-      .margin({ right: 8, bottom: 8 })
-      .stateStyles({
-        pressed: {
-          .opacity(0.82)
-          .scale({ x: 0.96, y: 0.96 })
-        }
-      })
-      .onClick(() => {
-        this.removeBasicAllergy(label);
-      })
+    .padding({
+      left: 12,
+      right: 9,
+      top: 7,
+      bottom: 7
+    })
+    .backgroundColor('#E8F8F6')
+    .border({ width: 1, color: '#B7DFDC' })
+    .borderRadius(16)
+    .margin({ right: 8, bottom: 8 })
+    .stateStyles({
+      pressed: {
+        .opacity(0.82)
+        .scale({ x: 0.96, y: 0.96 })
+      }
+    })
+    .onClick(() => {
+      this.removeBasicAllergy(label);
+    })
   }
 
   @Builder
@@ -1259,7 +1751,12 @@ struct Index {
           .fontColor('#536175')
           .lineHeight(18)
           .width('100%')
-          .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+          .padding({
+            left: 12,
+            right: 12,
+            top: 10,
+            bottom: 10
+          })
           .backgroundColor('#F8FCFC')
           .border({ width: 1, color: '#DCEBED' })
           .borderRadius(10)
@@ -1286,12 +1783,68 @@ struct Index {
         .lineHeight(18)
         .width('100%')
     }
-    .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+    .padding({
+      left: 12,
+      right: 12,
+      top: 10,
+      bottom: 10
+    })
     .backgroundColor('#F8FCFC')
     .border({ width: 1, color: '#DCEBED' })
     .borderRadius(10)
     .width('100%')
   }
+
+  @Builder
+  MedicineProcessingOverlay() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#660B1B2D')
+
+      Column({ space: 14 }) {
+        LoadingProgress()
+          .color('#009F9A')
+          .width(52)
+          .height(52)
+
+        Text('Preparing your medicine guide')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#142534')
+          .textAlign(TextAlign.Center)
+          .width('100%')
+
+        Text(this.uploadState)
+          .fontSize(14)
+          .fontColor('#536575')
+          .textAlign(TextAlign.Center)
+          .lineHeight(20)
+          .width('100%')
+
+        Text('Please keep MediClear open while we finish the analysis.')
+          .fontSize(12)
+          .fontColor('#81909D')
+          .textAlign(TextAlign.Center)
+          .lineHeight(18)
+          .width('100%')
+      }
+      .width('84%')
+      .padding({
+        left: 24,
+        right: 24,
+        top: 28,
+        bottom: 28
+      })
+      .backgroundColor(Color.White)
+      .borderRadius(24)
+      .shadow({ radius: 28, color: '#330B1B2D', offsetY: 12 })
+    }
+    .width('100%')
+    .height('100%')
+  }
+
   @Builder
   MedicineProcessingOverlay() {
     Stack({ alignContent: Alignment.Center }) {
@@ -1367,7 +1920,8 @@ struct Index {
         }
         .width('100%')
 
-        Text('Choose a leaflet or instruction-guide source. MediClear will read the guide, match the medicine, and generate a reminder plan from the official leaflet.')
+        Text(
+          'Choose a leaflet or instruction-guide source. MediClear will read the guide, match the medicine, and generate a reminder plan from the official leaflet.')
           .fontSize(13)
           .fontColor('#536175')
           .lineHeight(19)
@@ -1378,6 +1932,7 @@ struct Index {
           this.UploadChoiceButton('Choose Photo', 'Guide image', $r('app.media.bi_cloud_upload'), '#1767C5', 'gallery')
         }
         .width('100%')
+
         Button('Upload PDF or document')
           .fontSize(15)
           .fontWeight(FontWeight.Bold)
@@ -1497,7 +2052,12 @@ struct Index {
           Text('OTC')
             .fontSize(12)
             .fontColor('#057A68')
-            .padding({ left: 12, right: 12, top: 5, bottom: 5 })
+            .padding({
+              left: 12,
+              right: 12,
+              top: 5,
+              bottom: 5
+            })
             .backgroundColor('#DDF8EA')
             .borderRadius(14)
             .alignSelf(ItemAlign.Start)
@@ -1508,7 +2068,8 @@ struct Index {
       .backgroundColor(Color.White)
       .borderRadius(14)
 
-      this.InfoCard('Active Ingredient', this.activeIngredient + '\n' + this.ingredientNote, $r('app.media.bi_flask'), '#E0F6F1')
+      this.InfoCard('Active Ingredient', this.activeIngredient + '\n' + this.ingredientNote, $r('app.media.bi_flask'),
+        '#E0F6F1')
       this.InfoCard('How to Take', this.howToTake, $r('app.media.bi_list_check'), '#EAF2FF')
     }
     .width('100%')
@@ -1517,7 +2078,8 @@ struct Index {
   @Builder
   SafetyChecklist() {
     Column({ space: 14 }) {
-      this.WarningCard('Do not use if', this.contraindications, '#EF4444', '#FFF4F4', $r('app.media.bi_exclamation_triangle'))
+      this.WarningCard('Do not use if', this.contraindications, '#EF4444', '#FFF4F4',
+        $r('app.media.bi_exclamation_triangle'))
       this.WarningCard('Avoid', this.avoidWarnings, '#F59E0B', '#FFF9EA', $r('app.media.bi_exclamation_triangle'))
       this.WarningCard('Contact a doctor if', this.doctorWarnings, '#1767C5', '#F0F7FF', $r('app.media.bi_info_circle'))
 
@@ -1535,6 +2097,7 @@ struct Index {
           this.Chip('Headache')
           this.Chip('Fatigue')
         }
+
         this.NoteCard()
       }
       .width('100%')
@@ -1597,7 +2160,12 @@ struct Index {
           .lineHeight(20)
           .textAlign(TextAlign.Center)
           .width('100%')
-          .padding({ left: 12, right: 12, top: 10, bottom: 10 })
+          .padding({
+            left: 12,
+            right: 12,
+            top: 10,
+            bottom: 10
+          })
           .backgroundColor('#F8FCFC')
           .border({ width: 1, color: '#DCEBED' })
           .borderRadius(10)
@@ -1750,8 +2318,10 @@ struct Index {
       .justifyContent(FlexAlign.Center)
       .backgroundColor(this.isSelectedReminderCalendarDay(day) ? '#1767C5' :
         (day.hasReminder ? '#FFF4C2' : (day.today ? '#EAF2FF' : '#F8FCFC')))
-      .border({ width: 1, color: this.isSelectedReminderCalendarDay(day) ? '#1767C5' :
-        (day.hasReminder ? '#FBBF24' : (day.today ? '#1767C5' : '#E4EAF0')) })
+      .border({
+        width: 1, color: this.isSelectedReminderCalendarDay(day) ? '#1767C5' :
+          (day.hasReminder ? '#FBBF24' : (day.today ? '#1767C5' : '#E4EAF0'))
+      })
       .borderRadius(10)
       .stateStyles({
         pressed: {
@@ -1860,7 +2430,12 @@ struct Index {
       }
       .layoutWeight(1)
     }
-    .padding({ left: 10, right: 10, top: 7, bottom: 7 })
+    .padding({
+      left: 10,
+      right: 10,
+      top: 7,
+      bottom: 7
+    })
     .backgroundColor('#FFFFFF')
     .border({ width: 1, color: '#F4D47A' })
     .borderRadius(8)
@@ -1892,18 +2467,18 @@ struct Index {
     Column({ space: 16 }) {
       this.PageTop('Medicine History')
       TextInput({ placeholder: 'Search medicines', text: this.historySearchQuery })
-          .fontSize(14)
-          .fontColor('#111827')
-          .placeholderColor('#7A8797')
-          .padding({ left: 14, right: 14 })
-          .height(44)
-          .backgroundColor(Color.White)
-          .borderRadius(10)
-          .border({ width: 1, color: '#E4EAF0' })
-          .width('100%')
-          .onChange((value: string) => {
-            this.historySearchQuery = value;
-          })
+        .fontSize(14)
+        .fontColor('#111827')
+        .placeholderColor('#7A8797')
+        .padding({ left: 14, right: 14 })
+        .height(44)
+        .backgroundColor(Color.White)
+        .borderRadius(10)
+        .border({ width: 1, color: '#E4EAF0' })
+        .width('100%')
+        .onChange((value: string) => {
+          this.historySearchQuery = value;
+        })
 
       Text('Recent Entries')
         .fontSize(16)
@@ -2022,6 +2597,7 @@ struct Index {
       .onClick(() => {
         this.showHistoryDetail = false;
       })
+
       Text('Medicine Details')
         .fontSize(19)
         .fontWeight(FontWeight.Bold)
@@ -2049,16 +2625,27 @@ struct Index {
             this.ChatPhotoCard()
           }
         }
-        .padding({ left: 20, right: 20, top: 12, bottom: 18 })
+        .padding({
+          left: 20,
+          right: 20,
+          top: 12,
+          bottom: 18
+        })
         .width('100%')
       }
       .scrollBar(BarState.Off)
       .layoutWeight(1)
+
       if (this.hasActiveChatMedicine()) {
         Column() {
           this.ChatInputBar()
         }
-        .padding({ left: 20, right: 20, top: 10, bottom: 12 })
+        .padding({
+          left: 20,
+          right: 20,
+          top: 10,
+          bottom: 12
+        })
         .backgroundColor('#F6FBFC')
         .width('100%')
       }
@@ -2079,6 +2666,7 @@ struct Index {
       }
       .layoutWeight(1)
       .alignItems(VerticalAlign.Center)
+
       Stack() {
         Image($r('app.media.chat_new_art'))
           .width(34)
@@ -2101,7 +2689,12 @@ struct Index {
     }
     .width('100%')
     .height(64)
-    .padding({ left: 20, right: 20, top: 10, bottom: 8 })
+    .padding({
+      left: 20,
+      right: 20,
+      top: 10,
+      bottom: 8
+    })
     .backgroundColor('#F6FBFC')
   }
 
@@ -2120,6 +2713,7 @@ struct Index {
           .fontColor('#536175')
       }
       .layoutWeight(1)
+
       Stack() {
         Image($r('app.media.chat_robot_art'))
           .width(76)
@@ -2158,7 +2752,8 @@ struct Index {
           Text(this.leafletUrl.length > 0 ? 'Source: Official Leaflet (RPL)' : 'Source: Local medicine guide')
             .fontSize(12)
             .fontColor('#294159')
-          Text(this.backendKnowledgeDocumentId.length > 0 ? 'Knowledge base #' + this.backendKnowledgeDocumentId : this.chatStatus)
+          Text(this.backendKnowledgeDocumentId.length > 0 ? 'Knowledge base #' + this.backendKnowledgeDocumentId :
+            this.chatStatus)
             .fontSize(12)
             .fontColor(this.backendKnowledgeDocumentId.length > 0 ? '#007D83' : '#7A8797')
           Text(this.buildPatientContextSummary())
@@ -2196,6 +2791,7 @@ struct Index {
       .width(88)
       .height(88)
       .margin({ top: 6, bottom: 0 })
+
       Text(this.uploadState === 'No medicine guide scanned yet' ? 'Tap to take photo' : this.uploadState)
         .fontSize(12)
         .fontColor('#536175')
@@ -2279,7 +2875,12 @@ struct Index {
           .fontSize(13)
           .fontColor(Color.White)
           .lineHeight(19)
-          .padding({ left: 13, right: 13, top: 10, bottom: 10 })
+          .padding({
+            left: 13,
+            right: 13,
+            top: 10,
+            bottom: 10
+          })
           .backgroundColor('#009F9A')
           .border({ width: 1, color: '#009F9A' })
           .borderRadius(12)
@@ -2294,10 +2895,16 @@ struct Index {
             .width('100%')
         }
         .width('82%')
-        .padding({ left: 13, right: 13, top: 10, bottom: 10 })
+        .padding({
+          left: 13,
+          right: 13,
+          top: 10,
+          bottom: 10
+        })
         .backgroundColor(Color.White)
         .border({ width: 1, color: '#E3ECF2' })
         .borderRadius(12)
+
         Blank()
       }
     }
@@ -2310,7 +2917,12 @@ struct Index {
       .fontSize(13)
       .fontWeight(FontWeight.Medium)
       .fontColor('#1F4D9A')
-      .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+      .padding({
+        left: 12,
+        right: 12,
+        top: 8,
+        bottom: 8
+      })
       .backgroundColor('#EEF5FF')
       .borderRadius(16)
       .margin({ right: 8, bottom: 8 })
@@ -2391,6 +3003,24 @@ struct Index {
         this.SettingPanel('Help & Support', $r('app.media.bi_question_circle'), '#EAF2FF', '#1767C5', 'help')
         this.SettingPanel('About MediClear', $r('app.media.bi_info_circle'), '#E8F8F6', '#008A88', 'about')
         this.NoteCard()
+
+        Text('Signed in as ' + this.currentUserEmail)
+          .fontSize(12)
+          .fontColor('#536575')
+          .width('100%')
+
+        Button('Sign out')
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#B42318')
+          .backgroundColor(Color.White)
+          .border({ width: 1, color: '#F1C5C1' })
+          .borderRadius(10)
+          .height(46)
+          .width('100%')
+          .onClick(() => {
+            this.signOut();
+          })
       }
       .width('100%')
     }
@@ -2574,6 +3204,7 @@ struct Index {
           .fontColor(index === 0 ? '#E9FFFC' : '#45556C')
       }
       .layoutWeight(1)
+
       this.ChevronRight(index === 0 ? Color.White : item.tint)
     }
     .height(66)
@@ -2617,6 +3248,7 @@ struct Index {
           .fontColor('#5B6778')
       }
       .layoutWeight(1)
+
       this.ChevronRight('#4D6682')
     }
     .padding(14)
@@ -2668,10 +3300,16 @@ struct Index {
           .fontColor('#111827')
       }
       .layoutWeight(1)
+
       Text(record.date)
         .fontSize(11)
         .fontColor('#1261BA')
-        .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+        .padding({
+          left: 8,
+          right: 8,
+          top: 4,
+          bottom: 4
+        })
         .backgroundColor('#E6F0FF')
         .borderRadius(8)
       this.ChevronRight('#4D6682')
@@ -2731,6 +3369,7 @@ struct Index {
       .height(38)
       .backgroundColor('#FFF8E6')
       .borderRadius(12)
+
       Column({ space: 8 }) {
         Text(title)
           .fontSize(16)
@@ -2765,6 +3404,7 @@ struct Index {
           .lineHeight(20)
       }
       .layoutWeight(1)
+
       this.ChevronRight('#8A98A8')
     }
     .padding(16)
@@ -2782,10 +3422,11 @@ struct Index {
           .height(22)
           .fillColor(tint)
       }
-        .width(34)
-        .height(34)
-        .border({ width: 2, color: tint })
-        .borderRadius(17)
+      .width(34)
+      .height(34)
+      .border({ width: 2, color: tint })
+      .borderRadius(17)
+
       Column({ space: 8 }) {
         Text(title)
           .fontSize(17)
@@ -2903,6 +3544,7 @@ struct Index {
           .borderRadius(15)
         }
         .width('100%')
+
         Text(item.dose)
           .fontSize(13)
           .fontColor('#263244')
@@ -2918,7 +3560,12 @@ struct Index {
             Text(item.startDate + ' - ' + item.endDate)
               .fontSize(11)
               .fontColor('#007D83')
-              .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+              .padding({
+                left: 8,
+                right: 8,
+                top: 4,
+                bottom: 4
+              })
               .backgroundColor('#E8F8F6')
               .borderRadius(8)
           }
@@ -3066,6 +3713,7 @@ struct Index {
           .fontColor('#006D78')
       }
       .layoutWeight(1)
+
       this.LogoMark(28)
     }
     .padding(14)
@@ -3097,7 +3745,12 @@ struct Index {
     Text(label)
       .fontSize(12)
       .fontColor('#1663B7')
-      .padding({ left: 14, right: 14, top: 7, bottom: 7 })
+      .padding({
+        left: 14,
+        right: 14,
+        top: 7,
+        bottom: 7
+      })
       .backgroundColor('#E8F1FF')
       .border({ width: 1, color: '#C7DFFF' })
       .borderRadius(16)
@@ -3306,7 +3959,12 @@ struct Index {
               .lineHeight(18)
               .width('100%')
           }
-          .padding({ left: 10, right: 10, top: 9, bottom: 9 })
+          .padding({
+            left: 10,
+            right: 10,
+            top: 9,
+            bottom: 9
+          })
           .backgroundColor('#F6FBFC')
           .border({ width: 1, color: '#DCEBED' })
           .borderRadius(10)
@@ -3356,7 +4014,12 @@ struct Index {
             .fontColor('#8A5A00')
             .lineHeight(17)
             .width('100%')
-            .padding({ left: 10, right: 10, top: 8, bottom: 8 })
+            .padding({
+              left: 10,
+              right: 10,
+              top: 8,
+              bottom: 8
+            })
             .backgroundColor('#FFF8E6')
             .borderRadius(8)
         }
@@ -3510,10 +4173,10 @@ struct Index {
         .height(25)
         .fillColor(tint)
     }
-      .width(50)
-      .height(50)
-      .backgroundColor(background)
-      .borderRadius(14)
+    .width(50)
+    .height(50)
+    .backgroundColor(background)
+    .borderRadius(14)
   }
 
   @Builder
@@ -3597,7 +4260,8 @@ struct Index {
       this.handleMedicineGuidePicked('chat-camera', picked);
     } catch (err) {
       this.uploadState = 'Camera cancelled';
-      this.uploadSource = 'No medicine photo was captured. Tap the camera card to try again.\nError: ' + JSON.stringify(err);
+      this.uploadSource =
+        'No medicine photo was captured. Tap the camera card to try again.\nError: ' + JSON.stringify(err);
     }
   }
 
@@ -3644,7 +4308,9 @@ struct Index {
     const isChatUpload = this.activeUploadPurpose === 'chat';
     this.showHomeProcessingOverlay = this.currentTab === 0 && !isChatUpload;
     if (isChatUpload) {
-      this.uploadSource = 'Medicine photo captured. MediClear is matching the package to an official leaflet knowledge base.\nURI: ' + guideUri;
+      this.uploadSource =
+        'Medicine photo captured. MediClear is matching the package to an official leaflet knowledge base.\nURI: ' +
+          guideUri;
     } else if (sourceType === 'camera') {
       this.uploadSource = 'Guide photo captured. MediClear is extracting leaflet text.\nURI: ' + guideUri;
     } else if (sourceType === 'gallery') {
@@ -3664,6 +4330,15 @@ struct Index {
       this.uploadState = 'Analysis complete - backend knowledge base ready';
       if (!isChatUpload) {
         this.selectedGuide = 0;
+      }
+      this.showHomeProcessingOverlay = false;
+      try {
+        this.getUIContext().getPromptAction().showToast({
+          message: 'Medicine ' + this.medicineName + ' loaded!',
+          duration: 1800
+        });
+      } catch (toastError) {
+        console.warn('[MediClearOCR] success toast failed: ' + JSON.stringify(toastError));
       }
     } catch (err) {
       console.error('[MediClearOCR] OCR failed: ' + JSON.stringify(err));
@@ -3739,14 +4414,15 @@ struct Index {
     return true;
   }
 
-  private async prepareBackendKnowledgeBase(parsed: ParsedMedicineGuide, shouldPrepareReminders: boolean): Promise<void> {
+  private async prepareBackendKnowledgeBase(parsed: ParsedMedicineGuide,
+    shouldPrepareReminders: boolean): Promise<void> {
     if (parsed.productId.length === 0) {
       this.backendKnowledgeStatus = 'Skipped - no product ID';
       return;
     }
 
     this.backendKnowledgeStatus = 'Connecting to ' + MEDICLEAR_BACKEND_BASE_URL;
-    const backend = new BackendService();
+    const backend = new BackendService(getContext(this) as common.UIAbilityContext);
     try {
       const health: BackendHealthResponse = await backend.checkHealth();
       if (!health.ok) {
@@ -4006,7 +4682,8 @@ struct Index {
     this.appendChatMessage('user', question);
 
     if (this.backendKnowledgeDocumentId.length === 0) {
-      this.appendChatMessage('assistant', 'Please take a photo of a medicine first, or choose a history item with a ready knowledge base.');
+      this.appendChatMessage('assistant',
+        'Please take a photo of a medicine first, or choose a history item with a ready knowledge base.');
       return;
     }
 
@@ -4019,7 +4696,7 @@ struct Index {
     this.chatStatus = 'Asking MediClear assistant...';
     this.appendChatMessage('assistant', 'Thinking based on the official leaflet...');
     try {
-      const backend = new BackendService();
+      const backend = new BackendService(getContext(this) as common.UIAbilityContext);
       const reply: BackendChatResponse =
         await backend.askMedicineQuestion(question, documentId, this.medicineName, this.buildPatientContext());
       const loadingIndex = this.chatMessages.length - 1;
@@ -4030,7 +4707,8 @@ struct Index {
     } catch (err) {
       const loadingIndex = this.chatMessages.length - 1;
       const updatedMessages = this.chatMessages.slice(0, loadingIndex);
-      updatedMessages.push(new MedicineChatMessage('assistant', 'I could not reach the medicine AI service. Error: ' + JSON.stringify(err)));
+      updatedMessages.push(new MedicineChatMessage('assistant',
+        'I could not reach the medicine AI service. Error: ' + JSON.stringify(err)));
       this.chatMessages = updatedMessages;
       this.chatStatus = 'Chat unavailable';
       console.error('[MediClearChat] chat failed: ' + JSON.stringify(err));
@@ -4046,26 +4724,29 @@ struct Index {
       this.backendKnowledgeDocumentId = '';
       this.backendKnowledgeTextLength = '';
       this.chatStatus = 'No backend knowledge base for this history item';
-      this.appendChatMessage('assistant', record.name + ' is selected, but no official leaflet knowledge base is loaded yet. Take a photo to create one.');
+      this.appendChatMessage('assistant', record.name +
+        ' is selected, but no official leaflet knowledge base is loaded yet. Take a photo to create one.');
       return;
     }
 
     this.productId = record.productId;
     this.chatStatus = 'Loading history knowledge base...';
     try {
-      const backend = new BackendService();
+      const backend = new BackendService(getContext(this) as common.UIAbilityContext);
       const document: BackendDocumentResponse = await backend.getLatestDocumentByProduct(record.productId);
       this.backendKnowledgeDocumentId = document.id.toString();
       this.backendKnowledgeTextLength = document.text_length.toString();
       this.backendKnowledgeStatus = document.status + ' via ' + document.extraction_method;
       this.chatStatus = 'Knowledge base ready for ' + record.name;
-      this.appendChatMessage('assistant', 'Switched to ' + record.name + '. I will answer using its official leaflet knowledge base.');
+      this.appendChatMessage('assistant',
+        'Switched to ' + record.name + '. I will answer using its official leaflet knowledge base.');
     } catch (err) {
       this.backendKnowledgeDocumentId = '';
       this.backendKnowledgeTextLength = '';
       this.chatStatus = 'No stored knowledge base found';
-      this.appendChatMessage('assistant', 'I could not find a stored official leaflet knowledge base for ' + record.name +
-        '. Take a photo first so MediClear can match and load it.');
+      this.appendChatMessage('assistant',
+        'I could not find a stored official leaflet knowledge base for ' + record.name +
+          '. Take a photo first so MediClear can match and load it.');
       console.error('[MediClearChat] history knowledge base lookup failed: ' + JSON.stringify(err));
     }
   }
@@ -4077,18 +4758,19 @@ struct Index {
 
     const lowerUri = uri.toLowerCase();
     if (lowerUri.endsWith('.pdf')) {
-      throw new Error('Mobile OCR now supports medicine photos only. For official PDF leaflets, use the matched RPL leaflet endpoint and backend PDF knowledge base.');
+      throw new Error(
+        'Mobile OCR now supports medicine photos only. For official PDF leaflets, use the matched RPL leaflet endpoint and backend PDF knowledge base.');
     }
 
-    this.uploadState = 'OCR 2/4 Uploading image for cloud text recognition...';
-    const cloudOcrService = new MedicineImageOcrService();
-    const cloudText = await cloudOcrService.extractTextFromImage(uri);
-    if (cloudText.trim().length > 0) {
-      console.info('[MediClearUapiOCR] cloud OCR succeeded sourceType=' + sourceType);
-      return cloudText;
+    this.uploadState = 'OCR 2/4 Sending image for local text recognition...';
+    const localOcrService = new MedicineImageOcrService(getContext(this) as common.UIAbilityContext);
+    const localText = await localOcrService.extractTextFromImage(uri);
+    if (localText.trim().length > 0) {
+      console.info('[MediClearLocalOCR] OCR succeeded sourceType=' + sourceType);
+      return localText;
     }
 
-    throw new Error('Cloud OCR returned an empty result');
+    throw new Error('Local OCR returned an empty result');
   }
 
   private applyParsedMedicineGuide(parsed: ParsedMedicineGuide): void {
@@ -4412,7 +5094,7 @@ struct Index {
       this.historyDetailStatus = 'Loading official leaflet details...';
     }
     try {
-      const backend = new BackendService();
+      const backend = new BackendService(getContext(this) as common.UIAbilityContext);
       let document: BackendDocumentResponse;
       try {
         document = await backend.getLatestLeafletByProduct(record.productId);
@@ -5123,7 +5805,8 @@ struct Index {
       this.pendingReminderPlanItems = [];
       this.pendingReminderPlanDuration = '';
       this.showReminderConfirmDialog = false;
-      this.reminderAlarmStatus = plan.warning.length > 0 ? plan.warning : 'Reminder was not created because the leaflet safety check needs attention.';
+      this.reminderAlarmStatus = plan.warning.length > 0 ? plan.warning :
+        'Reminder was not created because the leaflet safety check needs attention.';
       return;
     }
 
@@ -5528,7 +6211,8 @@ struct Index {
     }
 
     if (lower.indexOf('3-4') >= 0 || lower.indexOf('three to four') >= 0) {
-      parsed.howToTake = '2 capsules each time\n3-4 times per day\nBefore, during, or after meals\nCan be taken before sleep if needed';
+      parsed.howToTake =
+        '2 capsules each time\n3-4 times per day\nBefore, during, or after meals\nCan be taken before sleep if needed';
       parsed.reminderOneTime = '08:30';
       parsed.reminderOneLabel = 'With breakfast';
       parsed.reminderTwoTime = '19:30';
@@ -5540,7 +6224,8 @@ struct Index {
     }
 
     if (lower.indexOf('persistent') >= 0 || lower.indexOf('abdominal') >= 0) {
-      parsed.avoid = 'Consult a clinician if abdominal symptoms are new or persistent\nCheck excipients if you have allergy history';
+      parsed.avoid =
+        'Consult a clinician if abdominal symptoms are new or persistent\nCheck excipients if you have allergy history';
     }
 
     if (lower.indexOf('reaction') >= 0 || lower.indexOf('allergic') >= 0) {
@@ -5573,7 +6258,9 @@ struct Index {
     parsed.productId = this.extractRplEndpointId(record);
     parsed.matchedKeywords = this.buildMatchedKeywords(this.extractedOcrText, record);
     parsed.matchedPackage = record.packageInfo;
-    parsed.sourceNote = 'Source: local MediClear RDB match. RPL identifier: ' + record.rplIdentifier + '. Product endpoint id: ' + parsed.productId + '.';
+    parsed.sourceNote =
+      'Source: local MediClear RDB match. RPL identifier: ' + record.rplIdentifier + '. Product endpoint id: ' +
+        parsed.productId + '.';
     if (matchedName.indexOf('espumisan') < 0) {
       parsed.howToTake = '';
       parsed.contraindications = '';
