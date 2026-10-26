@@ -1846,6 +1846,51 @@ struct Index {
   }
 
   @Builder
+  MedicineProcessingOverlay() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#660B1B2D')
+
+      Column({ space: 14 }) {
+        LoadingProgress()
+          .color('#009F9A')
+          .width(52)
+          .height(52)
+
+        Text('Preparing your medicine guide')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#142534')
+          .textAlign(TextAlign.Center)
+          .width('100%')
+
+        Text(this.uploadState)
+          .fontSize(14)
+          .fontColor('#536575')
+          .textAlign(TextAlign.Center)
+          .lineHeight(20)
+          .width('100%')
+
+        Text('Please keep MediClear open while we finish the analysis.')
+          .fontSize(12)
+          .fontColor('#81909D')
+          .textAlign(TextAlign.Center)
+          .lineHeight(18)
+          .width('100%')
+      }
+      .width('84%')
+      .padding({ left: 24, right: 24, top: 28, bottom: 28 })
+      .backgroundColor(Color.White)
+      .borderRadius(24)
+      .shadow({ radius: 28, color: '#330B1B2D', offsetY: 12 })
+    }
+    .width('100%')
+    .height('100%')
+  }
+
+  @Builder
   UploadChoiceSheet() {
     Column() {
       Blank()
