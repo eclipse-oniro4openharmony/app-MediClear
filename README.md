@@ -56,8 +56,6 @@ MediClear uses a HarmonyOS / OpenHarmony ArkTS mobile app plus a Docker backend 
 
 Medicine photos are resized and JPEG-encoded on the device, then sent to the MediClear backend. The backend forwards them over its private Docker network to a local PP-OCRv6 service. Photos are processed in memory and are not persisted; the PP-OCRv6 models are cached in a Docker volume after the first download.
 
-Medicine photos are sent through the MediClear backend to UApiPro's OCR API for text extraction. The backend does not store these photos. Cloud OCR is required for image extraction; UApiPro's service and privacy terms apply to photos submitted for cloud OCR.
-
 ### Prerequisites
 
 Before deploying MediClear, install and verify:
