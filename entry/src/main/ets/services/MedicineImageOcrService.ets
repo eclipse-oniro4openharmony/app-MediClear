@@ -1,6 +1,8 @@
+import { common } from '@kit.AbilityKit';
 import fs from '@ohos.file.fs';
 import http from '@ohos.net.http';
 import { image } from '@kit.ImageKit';
+import { AuthService } from './AuthService';
 import { buildMedicineOcrUrl } from './BackendConfig';
 
 class MedicineImageOcrResponse {
@@ -12,7 +14,14 @@ class MedicineImageOcrErrorResponse {
 }
 
 export class MedicineImageOcrService {
+  private context: common.UIAbilityContext;
+
+  constructor(context: common.UIAbilityContext) {
+    this.context = context;
+  }
+
   async extractTextFromImage(path: string): Promise<string> {
+    const token = await AuthService.getValidAccessToken(this.context);
     const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
     let imageSource: image.ImageSource | undefined;
     let pixelMap: image.PixelMap | undefined;
@@ -77,7 +86,8 @@ export class MedicineImageOcrService {
           'Content-Type': 'application/octet-stream',
           'X-File-Name': 'medicine-image.jpg',
           'X-File-Type': 'image/jpeg',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + token
         },
         extraData: imageData,
         expectDataType: http.HttpDataType.STRING,

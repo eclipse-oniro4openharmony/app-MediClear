@@ -1,4 +1,6 @@
+import { common } from '@kit.AbilityKit';
 import http from '@ohos.net.http';
+import { AuthService } from './AuthService';
 import {
   buildDocumentFactsUrl,
   buildLatestDocumentByProductUrl,
@@ -136,6 +138,16 @@ export class BackendMedicineFactsResponse {
 }
 
 export class BackendService {
+  private context: common.UIAbilityContext;
+
+  constructor(context: common.UIAbilityContext) {
+    this.context = context;
+  }
+
+  private async accessToken(): Promise<string> {
+    return await AuthService.getValidAccessToken(this.context);
+  }
+
   async checkHealth(): Promise<BackendHealthResponse> {
     const request = http.createHttp();
     try {
@@ -164,6 +176,7 @@ export class BackendService {
   async extractRplLeaflet(productId: string, medicineName: string, leafletUrl: string = '',
     characteristicUrl: string = ''): Promise<BackendDocumentResponse> {
     const requestBody = new RplDocumentExtractRequest(productId, medicineName, leafletUrl, characteristicUrl);
+    const token = await this.accessToken();
     const request = http.createHttp();
     try {
       console.info('[MediClearBackend] extract request start productId=' + productId + ' url=' + buildRplDocumentExtractUrl());
@@ -171,7 +184,8 @@ export class BackendService {
         method: http.RequestMethod.POST,
         header: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + token
         },
         extraData: JSON.stringify(requestBody),
         expectDataType: http.HttpDataType.STRING,
@@ -191,12 +205,14 @@ export class BackendService {
   }
 
   async getLatestDocumentByProduct(productId: string): Promise<BackendDocumentResponse> {
+    const token = await this.accessToken();
     const request = http.createHttp();
     try {
       const response = await request.request(buildLatestDocumentByProductUrl(productId), {
         method: http.RequestMethod.GET,
         header: {
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + token
         },
         expectDataType: http.HttpDataType.STRING,
         readTimeout: 30000,
@@ -214,12 +230,14 @@ export class BackendService {
   }
 
   async getLatestLeafletByProduct(productId: string): Promise<BackendDocumentResponse> {
+    const token = await this.accessToken();
     const request = http.createHttp();
     try {
       const response = await request.request(buildLatestLeafletByProductUrl(productId), {
         method: http.RequestMethod.GET,
         header: {
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + token
         },
         expectDataType: http.HttpDataType.STRING,
         readTimeout: 15000,
@@ -238,12 +256,14 @@ export class BackendService {
   }
 
   async getMedicineFacts(documentId: number): Promise<BackendMedicineFactsResponse> {
+    const token = await this.accessToken();
     const request = http.createHttp();
     try {
       const response = await request.request(buildDocumentFactsUrl(documentId), {
         method: http.RequestMethod.GET,
         header: {
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + token
         },
         expectDataType: http.HttpDataType.STRING,
         readTimeout: 30000,
@@ -264,6 +284,7 @@ export class BackendService {
   async askMedicineQuestion(question: string, documentId: number, medicineName: string,
     patientContext: PatientContext): Promise<BackendChatResponse> {
     const requestBody = new MedicineChatRequest(question, documentId, medicineName, patientContext);
+    const token = await this.accessToken();
     const request = http.createHttp();
     try {
       console.info('[MediClearChat] chat request start documentId=' + documentId.toString());
@@ -271,7 +292,8 @@ export class BackendService {
         method: http.RequestMethod.POST,
         header: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + token
         },
         extraData: JSON.stringify(requestBody),
         expectDataType: http.HttpDataType.STRING,
@@ -293,6 +315,7 @@ export class BackendService {
   async planMedicationReminders(documentId: number, medicineName: string,
     patientContext: PatientContext): Promise<BackendReminderPlanResponse> {
     const requestBody = new ReminderPlanRequest(documentId, medicineName, patientContext);
+    const token = await this.accessToken();
     const request = http.createHttp();
     try {
       console.info('[MediClearReminder] reminder plan request start documentId=' + documentId.toString());
@@ -300,7 +323,8 @@ export class BackendService {
         method: http.RequestMethod.POST,
         header: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ' + token
         },
         extraData: JSON.stringify(requestBody),
         expectDataType: http.HttpDataType.STRING,

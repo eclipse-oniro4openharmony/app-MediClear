@@ -33,6 +33,23 @@ export async function initializeDatabase() {
     default_language: 'none',
     name: 'chunk_text_index'
   });
+
+  await database.collection('users').createIndex({ email: 1 }, { unique: true });
+  await database.collection('auth_verification_codes').createIndex({ email: 1, purpose: 1 }, { unique: true });
+  await database.collection('auth_verification_codes').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  await database.collection('auth_refresh_sessions').createIndex({ tokenHash: 1 }, { unique: true });
+  await database.collection('auth_refresh_sessions').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+}
+
+export function getAuthCollections() {
+  if (!database) {
+    throw new Error('Database has not been initialized');
+  }
+  return {
+    users: database.collection('users'),
+    verificationCodes: database.collection('auth_verification_codes'),
+    refreshSessions: database.collection('auth_refresh_sessions')
+  };
 }
 
 export async function closeDatabase() {
