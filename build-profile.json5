@@ -1,18 +1,6 @@
 {
   "app": {
     "signingConfigs": [
-      {
-        "name": "default",
-        "material": {
-          "certpath": "C:/Users/chens/.ohos/config/openharmony/default_app-MediClear_DVfr9v-Z3E30QRMNxrGsFWJOFTY9Uj6jS4BMaEkvovE=.cer",
-          "keyAlias": "debugKey",
-          "keyPassword": "0000001B5F769F15377FA19F237A4A89858454A0A6B42D187C0DFD96F567794D5033FE0B407A4FEEB7F802",
-          "profile": "C:/Users/chens/.ohos/config/openharmony/default_app-MediClear_DVfr9v-Z3E30QRMNxrGsFWJOFTY9Uj6jS4BMaEkvovE=.p7b",
-          "signAlg": "SHA256withECDSA",
-          "storeFile": "C:/Users/chens/.ohos/config/openharmony/default_app-MediClear_DVfr9v-Z3E30QRMNxrGsFWJOFTY9Uj6jS4BMaEkvovE=.p12",
-          "storePassword": "0000001BFC8361A15A8C36880FBC24B6481015EC582DC55853BB8753FEF489D3CED940B75CC4F4996E43F3"
-        }
-      }
     ],
     "products": [
       {
