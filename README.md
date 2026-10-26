@@ -4,6 +4,38 @@ MediClear is a mobile AI medicine label assistant that turns complex over-the-co
 
 The app helps users understand official medicine labels, packages, leaflets, PDFs, and usage guides. It is designed to extract and organize information from medicine instructions, not to diagnose users or recommend what medicine they should take.
 
+## Contents
+
+- [Screenshots](#screenshots)
+- [Deployment](#deployment)
+- [Prerequisites](#prerequisites)
+- [Start the Backend](#1-start-the-backend)
+- [Install App Dependencies](#2-install-app-dependencies)
+- [Configure Signing](#3-configure-signing)
+- [Build the App](#4-build-the-app)
+- [Core Idea](#core-idea)
+- [Key Features](#key-features)
+- [Medicine Leaflet Parsing](#medicine-leaflet-parsing)
+- [Clear Usage Checklist](#clear-usage-checklist)
+- [Medication Reminders](#medication-reminders)
+- [Safety Checklist](#safety-checklist)
+- [Side Effect Summary](#side-effect-summary)
+- [Translation and Simplification](#translation-and-simplification)
+- [App Flow](#app-flow)
+- [Main Screens](#main-screens)
+- [Home](#home)
+- [Medicine Summary](#medicine-summary)
+- [Safety Checklist Screen](#safety-checklist-1)
+- [Medication Reminder Screen](#medication-reminder)
+- [Medicine History](#medicine-history)
+- [Profile](#profile)
+- [Technical Direction](#technical-direction)
+- [Text Extraction](#text-extraction)
+- [Reminder Planning](#reminder-planning)
+- [Safety Boundary](#safety-boundary)
+- [Current Status](#current-status)
+- [Updates](#updates)
+
 ## Screenshots
 
 | Home Search and Analysis | Medicine History | Reminder Summary |
@@ -30,6 +62,7 @@ Before deploying MediClear, install and verify:
 
 - DevEco Studio or a compatible HarmonyOS / OpenHarmony SDK and command-line toolchain.
 - Node.js and `ohpm`, used to install ArkTS project dependencies.
+- Java, required by `oniro-app sign` when generating OpenHarmony development signing material.
 - Docker Desktop or Docker Engine, used to run the backend and its database services.
 - `oniro-app`, used by this project for command-line build/deploy workflows.
 - A HarmonyOS / OpenHarmony device or emulator for running the mobile app.
@@ -57,6 +90,15 @@ Start the backend from the `backend` folder:
 cd backend
 docker compose up --build
 ```
+
+Configure the image OCR service in `backend/.env` if you want to override the defaults:
+
+```text
+OCR_SERVICE_URL=http://paddleocr:8080
+OCR_TIMEOUT_MS=120000
+```
+
+`OCR_SERVICE_URL` defaults to the `paddleocr` service in Docker Compose. The backend appends `/ocr` to this base URL, so do not include `/ocr` in the configured value. A custom service must be reachable from the backend container and implement the PaddleOCR-compatible `/ocr` request and response format. `OCR_TIMEOUT_MS` controls how long the backend waits for the OCR service before returning a timeout response.
 
 Configure the backend LLM provider in `backend/.env`. The backend expects an OpenAI-compatible chat-completions endpoint, so it can use a local model, a self-hosted gateway, or a hosted provider.
 
@@ -98,7 +140,19 @@ The Chat page uses `@luvi/lv-markdown-in` to render assistant answers that conta
 ohpm install @luvi/lv-markdown-in
 ```
 
-### 3. Build the App
+### 3. Configure Signing
+
+Before the first local build, generate a development signing configuration from the project root:
+
+```bash
+oniro-app sign
+```
+
+This creates local development signing material and writes a `default` signing configuration to `build-profile.json5`. Do not commit personal certificates, private keys, passwords, or machine-specific signing paths. Alternatively, open the project in DevEco Studio and enable automatic signing.
+
+The generated OpenHarmony development certificate is for local development builds only. Use the appropriate release-signing process when preparing a distributable release.
+
+### 4. Build the App
 
 Build the HarmonyOS / OpenHarmony app from the project root:
 
@@ -290,7 +344,7 @@ Possible implementation route:
 
 Possible components:
 
-- OCR: HarmonyOS Core Vision text recognition for medicine leaflet and instruction-guide photos
+- OCR: on-device image resizing and JPEG encoding, followed by the configurable backend OCR service (PP-OCRv6 through Docker Compose by default)
 - PDF parsing: PDF.js, Poppler, or platform PDF extraction
 - Text extraction: rule-based parser plus optional LLM support
 - Local database: SQLite
@@ -302,7 +356,7 @@ Chat answers can include concise Markdown such as bold labels, bullet lists, and
 
 ### Text Extraction
 
-Medicine leaflet photos and gallery images are recognized on-device with HarmonyOS Core Vision text recognition.
+Medicine leaflet photos and gallery images are resized and JPEG-encoded on the device, then sent to the MediClear backend for recognition. The backend forwards images in memory to the configured OCR service; the Docker Compose default is the local PP-OCRv6 service. The backend does not persist the submitted photos.
 
 Official leaflet PDFs are not stored in the mobile app. After the app matches a medicine to an RPL product ID, the Docker backend downloads the official PDF, extracts text with `pdfjs-dist`, stores the resulting text chunks in MongoDB, and discards the PDF buffer.
 
@@ -335,3 +389,14 @@ This repository contains an ArkTS / ArkUI mobile UI prototype for MediClear, inc
 - Medicine history
 - Profile/settings page
 - App name and app icon resources
+
+## Updates
+
+- Added email/password account registration and sign-in, email verification, session refresh, sign-out, and password reset flows.
+- Added Bearer-token authentication for business `/api/*` routes, with `/health` and `/api/auth/*` handled separately.
+- Improved the sign-in experience by hiding the duplicate email field during verification, using dark password-visibility icons, and placing the MediClear logo and name horizontally.
+- Added a configurable OCR service endpoint with a local PP-OCRv6 Docker service as the default, replacing reliance on a hard-coded public OCR provider.
+- Improved OCR image handling and failure reporting, including explicit timeout handling and clearer service-unavailable responses.
+- Added medicine search, loading feedback during analysis, and medicine-history export.
+- Added reminder confirmation and medicine-time alert flows, with reminder planning based on the extracted leaflet information.
+- Migrated the app build configuration to OpenHarmony and expanded deployment/build documentation, including local signing instructions.
