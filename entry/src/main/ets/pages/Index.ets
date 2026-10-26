@@ -485,16 +485,22 @@ struct Index {
     Column() {
       Scroll() {
         Column({ space: 18 }) {
-          this.LogoMark(54)
-          Text('MediClear')
-            .fontSize(28)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#12313A')
+          Row({ space: 5 }) {
+            this.LogoMark(54)
+            Text('MediClear')
+              .fontSize(28)
+              .fontWeight(FontWeight.Bold)
+              .fontColor('#12313A')
+          }
+          .alignItems(VerticalAlign.Center)
           Text('Your medicine guides, reminders, and health notes')
             .fontSize(14)
             .fontColor('#5D7179')
             .textAlign(TextAlign.Center)
             .width('100%')
+            .margin({
+              bottom: 50
+            })
 
           if (!this.authReady) {
             LoadingProgress()
