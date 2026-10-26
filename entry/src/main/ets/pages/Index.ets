@@ -9,6 +9,7 @@ import { RplMedicineRecord } from '../database/RplMedicineRecord';
 import { MedicineImageOcrService } from '../services/MedicineImageOcrService';
 import { MedicineGuideMediaHelper, PickedMedicineGuide } from '../services/MedicineGuideMediaHelper';
 import { MedicineReminderNotificationService } from '../services/MedicineReminderNotificationService';
+import { AuthService, AuthUser } from '../services/AuthService';
 import {
   BackendService,
   BackendChatResponse,
@@ -210,6 +211,17 @@ class MedicineChatMessage {
 @Entry
 @Component
 struct Index {
+  @State authReady: boolean = false;
+  @State isAuthenticated: boolean = false;
+  @State authMode: string = 'login';
+  @State authEmail: string = '';
+  @State authPassword: string = '';
+  @State authConfirmPassword: string = '';
+  @State authCode: string = '';
+  @State authError: string = '';
+  @State authNotice: string = '';
+  @State authBusy: boolean = false;
+  @State currentUserEmail: string = '';
   @State currentTab: number = 0;
   @State selectedGuide: number = 0;
   @State showUploadSheet: boolean = false;
@@ -352,6 +364,8 @@ struct Index {
   private reminderAlertTimer: number = -1;
   private reminderPermissionRequested: boolean = false;
   private lastReminderAlertKey: string = '';
+  private authRestoreStarted: boolean = false;
+  private currentUserId: string = '';
 
   aboutToAppear(): void {
     const now = new Date();
@@ -374,9 +388,14 @@ struct Index {
       .setUlPointSize(4);
     this.chatMarkdownController.setBlockSpacing(6);
     this.reminderNotificationService.setContext(getContext(this) as common.UIAbilityContext);
-    this.requestReminderNotificationPermissionOnce();
-    this.loadMedicineHistory();
-    this.loadMedicineReminders();
+  }
+
+  onPageShow(): void {
+    if (this.authRestoreStarted) {
+      return;
+    }
+    this.authRestoreStarted = true;
+    this.restoreAuthSession();
   }
 
   aboutToDisappear(): void {
@@ -451,10 +470,437 @@ struct Index {
       if (this.showHomeProcessingOverlay && this.currentTab === 0) {
         this.MedicineProcessingOverlay()
       }
+
+      if (!this.authReady || !this.isAuthenticated) {
+        this.AuthGate()
+      }
     }
     .width('100%')
     .height('100%')
     .backgroundColor('#F6FBFC')
+  }
+
+  @Builder
+  AuthGate() {
+    Column() {
+      Scroll() {
+        Column({ space: 18 }) {
+          this.LogoMark(54)
+          Text('MediClear')
+            .fontSize(28)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#12313A')
+          Text('Your medicine guides, reminders, and health notes')
+            .fontSize(14)
+            .fontColor('#5D7179')
+            .textAlign(TextAlign.Center)
+            .width('100%')
+
+          if (!this.authReady) {
+            LoadingProgress()
+              .color('#009F9A')
+              .width(40)
+              .height(40)
+            Text('Restoring your session...')
+              .fontSize(14)
+              .fontColor('#536575')
+          } else {
+            this.AuthForm()
+          }
+        }
+        .width('100%')
+        .padding({ left: 24, right: 24, top: 48, bottom: 36 })
+        .alignItems(HorizontalAlign.Center)
+      }
+      .width('100%')
+      .height('100%')
+      .scrollBar(BarState.Off)
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor('#F6FBFC')
+  }
+
+  @Builder
+  AuthForm() {
+    Column({ space: 14 }) {
+      Text(this.authPageTitle())
+        .fontSize(21)
+        .fontWeight(FontWeight.Bold)
+        .fontColor('#142534')
+        .width('100%')
+        .textAlign(TextAlign.Center)
+
+      if (this.authNotice.length > 0) {
+        Text(this.authNotice)
+          .fontSize(13)
+          .fontColor('#087F70')
+          .lineHeight(19)
+          .width('100%')
+          .textAlign(TextAlign.Center)
+      }
+
+      this.AuthTextInput('Email', 'you@example.com', this.authEmail, 'email', InputType.Email, 254)
+
+      if (this.authMode === 'login' || this.authMode === 'register') {
+        this.AuthTextInput('Password', 'At least 12 characters', this.authPassword, 'password',
+          InputType.Password, 128)
+      }
+
+      if (this.authMode === 'register') {
+        this.AuthTextInput('Confirm password', 'Enter the password again', this.authConfirmPassword,
+          'confirmPassword', InputType.Password, 128)
+      }
+
+      if (this.authMode === 'verify-email' || this.authMode === 'reset-password') {
+        this.AuthTextInput('Email code', 'Six-digit code', this.authCode, 'code', InputType.Number, 6)
+      }
+
+      if (this.authMode === 'reset-password') {
+        this.AuthTextInput('New password', 'At least 12 characters', this.authPassword, 'password',
+          InputType.Password, 128)
+      }
+
+      if (this.authError.length > 0) {
+        Text(this.authError)
+          .fontSize(13)
+          .fontColor('#B42318')
+          .lineHeight(19)
+          .width('100%')
+      }
+
+      Button(this.authActionLabel())
+        .fontSize(15)
+        .fontWeight(FontWeight.Bold)
+        .fontColor(Color.White)
+        .backgroundColor('#008A88')
+        .borderRadius(12)
+        .height(50)
+        .width('100%')
+        .enabled(!this.authBusy)
+        .onClick(() => {
+          this.submitAuthAction();
+        })
+
+      if (this.authBusy) {
+        LoadingProgress()
+          .color('#009F9A')
+          .width(28)
+          .height(28)
+      }
+
+      if (this.authMode === 'login') {
+        Row({ space: 18 }) {
+          Text('Create account')
+            .fontSize(13)
+            .fontColor('#087F70')
+            .onClick(() => this.changeAuthMode('register'))
+          Text('Forgot password?')
+            .fontSize(13)
+            .fontColor('#1767C5')
+            .onClick(() => this.changeAuthMode('forgot-password'))
+        }
+        .justifyContent(FlexAlign.Center)
+        .width('100%')
+      } else if (this.authMode !== 'login') {
+        Text('Back to sign in')
+          .fontSize(13)
+          .fontColor('#087F70')
+          .onClick(() => this.changeAuthMode('login'))
+      }
+    }
+    .padding(20)
+    .backgroundColor(Color.White)
+    .border({ width: 1, color: '#DCEBED' })
+    .borderRadius(18)
+    .width('100%')
+  }
+
+  @Builder
+  AuthTextInput(label: string, placeholder: string, value: string, field: string, inputType: InputType,
+    maxLength: number) {
+    Column({ space: 6 }) {
+      Text(label)
+        .fontSize(13)
+        .fontWeight(FontWeight.Medium)
+        .fontColor('#324B55')
+        .width('100%')
+      TextInput({ placeholder, text: value })
+        .type(inputType)
+        .maxLength(maxLength)
+        .fontSize(15)
+        .fontColor('#142534')
+        .placeholderColor('#8A98A8')
+        .height(48)
+        .padding({ left: 12, right: 12 })
+        .backgroundColor('#F8FCFC')
+        .border({ width: 1, color: '#DCEBED' })
+        .borderRadius(10)
+        .onChange((input: string) => this.updateAuthField(field, input))
+    }
+    .width('100%')
+  }
+
+  private authPageTitle(): string {
+    if (this.authMode === 'register') {
+      return 'Create your account';
+    }
+    if (this.authMode === 'verify-email') {
+      return 'Verify your email';
+    }
+    if (this.authMode === 'forgot-password') {
+      return 'Reset your password';
+    }
+    if (this.authMode === 'reset-password') {
+      return 'Choose a new password';
+    }
+    return 'Sign in';
+  }
+
+  private authActionLabel(): string {
+    if (this.authMode === 'register') {
+      return 'Create account';
+    }
+    if (this.authMode === 'verify-email') {
+      return 'Verify email';
+    }
+    if (this.authMode === 'forgot-password') {
+      return 'Send reset code';
+    }
+    if (this.authMode === 'reset-password') {
+      return 'Reset password';
+    }
+    return 'Sign in';
+  }
+
+  private changeAuthMode(mode: string): void {
+    this.authMode = mode;
+    this.authError = '';
+    this.authNotice = '';
+    this.authCode = '';
+    this.authPassword = '';
+    this.authConfirmPassword = '';
+  }
+
+  private updateAuthField(field: string, value: string): void {
+    if (field === 'email') {
+      this.authEmail = value;
+    } else if (field === 'password') {
+      this.authPassword = value;
+    } else if (field === 'confirmPassword') {
+      this.authConfirmPassword = value;
+    } else if (field === 'code') {
+      this.authCode = value;
+    }
+  }
+
+  private async restoreAuthSession(): Promise<void> {
+    this.authBusy = true;
+    try {
+      const user = await AuthService.restoreSession(getContext(this) as common.UIAbilityContext);
+      if (user) {
+        await this.activateAuthenticatedUser(user);
+      } else {
+        this.authReady = true;
+      }
+    } catch (error) {
+      this.authError = 'Could not restore your session. Check the backend connection and sign in again.';
+      console.warn('[MediClearAuth] session restore failed: ' + JSON.stringify(error));
+      this.authReady = true;
+    } finally {
+      this.authBusy = false;
+    }
+  }
+
+  private async submitAuthAction(): Promise<void> {
+    if (this.authBusy) {
+      return;
+    }
+    this.authError = '';
+    this.authNotice = '';
+    const email = this.authEmail.trim().toLowerCase();
+    if (email.length === 0) {
+      this.authError = 'Enter your email address.';
+      return;
+    }
+
+    this.authBusy = true;
+    try {
+      if (this.authMode === 'register') {
+        if (this.authPassword.length < 12) {
+          this.authError = 'Use a password with at least 12 characters.';
+          return;
+        }
+        if (this.authPassword !== this.authConfirmPassword) {
+          this.authError = 'The passwords do not match.';
+          return;
+        }
+        await AuthService.register(email, this.authPassword);
+        this.authEmail = email;
+        this.authPassword = '';
+        this.authConfirmPassword = '';
+        this.authMode = 'verify-email';
+        this.authNotice = 'A six-digit verification code was sent to your email.';
+      } else if (this.authMode === 'verify-email') {
+        await AuthService.verifyEmail(email, this.authCode.trim());
+        this.authMode = 'login';
+        this.authPassword = '';
+        this.authCode = '';
+        this.authNotice = 'Email verified. Sign in to continue.';
+      } else if (this.authMode === 'forgot-password') {
+        await AuthService.requestPasswordReset(email);
+        this.authMode = 'reset-password';
+        this.authCode = '';
+        this.authNotice = 'If the account exists, a reset code has been sent.';
+      } else if (this.authMode === 'reset-password') {
+        if (this.authPassword.length < 12) {
+          this.authError = 'Use a password with at least 12 characters.';
+          return;
+        }
+        await AuthService.resetPassword(email, this.authCode.trim(), this.authPassword);
+        this.authMode = 'login';
+        this.authPassword = '';
+        this.authCode = '';
+        this.authNotice = 'Password reset. Sign in with your new password.';
+      } else {
+        const user = await AuthService.login(getContext(this) as common.UIAbilityContext, email, this.authPassword);
+        await this.activateAuthenticatedUser(user);
+      }
+    } catch (error) {
+      this.authError = this.formatError(error);
+    } finally {
+      this.authBusy = false;
+    }
+  }
+
+  private async activateAuthenticatedUser(user: AuthUser): Promise<void> {
+    this.clearAccountData();
+    await this.migrateLegacyLocalData(user.id);
+    this.currentUserId = user.id;
+    this.currentUserEmail = user.email;
+    this.historyPreferencesName = 'mediclear_history_' + user.id;
+    this.reminderPreferencesName = 'mediclear_reminders_' + user.id;
+    this.reminderNotificationService.setContext(getContext(this) as common.UIAbilityContext);
+    await this.loadMedicineHistory();
+    await this.loadMedicineReminders();
+    this.requestReminderNotificationPermissionOnce();
+    this.isAuthenticated = true;
+    this.authReady = true;
+    this.authMode = 'login';
+    this.authPassword = '';
+    this.authConfirmPassword = '';
+    this.authError = '';
+    this.authNotice = '';
+  }
+
+  private async migrateLegacyLocalData(userId: string): Promise<void> {
+    const context = getContext(this);
+    const authStore = await preferences.getPreferences(context, 'mediclear_auth_session');
+    const migrationDone = (await authStore.get('legacy_data_migrated', false)).toString() === 'true';
+    if (migrationDone) {
+      return;
+    }
+
+    const legacyHistory = await preferences.getPreferences(context, 'mediclear_history');
+    const legacyReminders = await preferences.getPreferences(context, 'mediclear_reminders');
+    const accountHistory = await preferences.getPreferences(context, 'mediclear_history_' + userId);
+    const accountReminders = await preferences.getPreferences(context, 'mediclear_reminders_' + userId);
+    const historyValue = (await legacyHistory.get('medicine_history', '')).toString();
+    const reminderValue = (await legacyReminders.get('medicine_reminders', '')).toString();
+
+    if (historyValue.length > 0 && (await accountHistory.get('medicine_history', '')).toString().length === 0) {
+      await accountHistory.put('medicine_history', historyValue);
+      await accountHistory.flush();
+    }
+    if (reminderValue.length > 0 && (await accountReminders.get('medicine_reminders', '')).toString().length === 0) {
+      await accountReminders.put('medicine_reminders', reminderValue);
+      await accountReminders.flush();
+    }
+
+    await authStore.put('legacy_data_migrated', true);
+    await authStore.flush();
+  }
+
+  private clearAccountData(): void {
+    this.clearReminderAlertTimer();
+    this.reminderNotificationService.stopActiveReminderAlert();
+    this.currentTab = 0;
+    this.showBasicsForm = false;
+    this.showUploadSheet = false;
+    this.showHomeProcessingOverlay = false;
+    this.showReminderConfirmDialog = false;
+    this.showDuplicateReminderDialog = false;
+    this.showReminderTimeDialog = false;
+    this.showHistoryDetail = false;
+    this.activeReminderAlertVisible = false;
+    this.selectedGuideUri = '';
+    this.extractedOcrText = '';
+    this.uploadState = 'No medicine guide scanned yet';
+    this.uploadSource = 'Tap Upload Medicine Guide to scan a medicine leaflet.';
+    this.medicines = [];
+    this.reminderPlanItems = [];
+    this.pendingReminderPlanItems = [];
+    this.pendingReminderPlanSummary = '';
+    this.pendingReminderPlanWarning = '';
+    this.pendingReminderPlanDuration = '';
+    this.chatMessages = [];
+    this.chatQuestion = '';
+    this.chatStatus = 'No active knowledge base';
+    this.medicineName = '';
+    this.medicineSubtitle = '';
+    this.activeIngredient = '';
+    this.ingredientNote = '';
+    this.howToTake = '';
+    this.contraindications = '';
+    this.avoidWarnings = '';
+    this.doctorWarnings = '';
+    this.sideEffectOne = '';
+    this.sideEffectTwo = '';
+    this.sideEffectThree = '';
+    this.basicGender = '';
+    this.basicAge = '';
+    this.basicWeight = '';
+    this.basicSymptoms = '';
+    this.basicAllergyHistory = '';
+    this.basicSpecialStatus = '';
+    this.basicCustomAllergy = '';
+    this.homeMedicineSearchQuery = '';
+    this.historySearchQuery = '';
+    this.productId = '';
+    this.rplIdentifier = '';
+    this.matchedKeywords = '';
+    this.matchedPackage = '';
+    this.backendKnowledgeDocumentId = '';
+    this.backendKnowledgeTextLength = '';
+    this.backendKnowledgeStatus = '';
+    this.reminderPlanStatus = 'Upload a medicine guide to generate reminders.';
+    this.reminderPlanWarning = '';
+    this.reminderAlarmStatus = 'No reminder plan set yet.';
+    this.sourceNote = '';
+    this.leafletUrl = '';
+    this.characteristicUrl = '';
+    this.settingsDetailPage = '';
+  }
+
+  private async signOut(): Promise<void> {
+    try {
+      await AuthService.logout(getContext(this) as common.UIAbilityContext);
+    } catch (error) {
+      console.warn('[MediClearAuth] sign out failed: ' + JSON.stringify(error));
+    }
+    this.clearAccountData();
+    this.currentUserId = '';
+    this.currentUserEmail = '';
+    this.authEmail = '';
+    this.authPassword = '';
+    this.authConfirmPassword = '';
+    this.authCode = '';
+    this.authError = '';
+    this.authNotice = '';
+    this.authMode = 'login';
+    this.isAuthenticated = false;
+    this.authReady = true;
   }
 
   private handleSectionAction(actionKey: string): void {
@@ -2391,6 +2837,22 @@ struct Index {
         this.SettingPanel('Help & Support', $r('app.media.bi_question_circle'), '#EAF2FF', '#1767C5', 'help')
         this.SettingPanel('About MediClear', $r('app.media.bi_info_circle'), '#E8F8F6', '#008A88', 'about')
         this.NoteCard()
+        Text('Signed in as ' + this.currentUserEmail)
+          .fontSize(12)
+          .fontColor('#536575')
+          .width('100%')
+        Button('Sign out')
+          .fontSize(14)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#B42318')
+          .backgroundColor(Color.White)
+          .border({ width: 1, color: '#F1C5C1' })
+          .borderRadius(10)
+          .height(46)
+          .width('100%')
+          .onClick(() => {
+            this.signOut();
+          })
       }
       .width('100%')
     }
@@ -3755,7 +4217,7 @@ struct Index {
     }
 
     this.backendKnowledgeStatus = 'Connecting to ' + MEDICLEAR_BACKEND_BASE_URL;
-    const backend = new BackendService();
+    const backend = new BackendService(getContext(this) as common.UIAbilityContext);
     try {
       const health: BackendHealthResponse = await backend.checkHealth();
       if (!health.ok) {
@@ -4028,7 +4490,7 @@ struct Index {
     this.chatStatus = 'Asking MediClear assistant...';
     this.appendChatMessage('assistant', 'Thinking based on the official leaflet...');
     try {
-      const backend = new BackendService();
+      const backend = new BackendService(getContext(this) as common.UIAbilityContext);
       const reply: BackendChatResponse =
         await backend.askMedicineQuestion(question, documentId, this.medicineName, this.buildPatientContext());
       const loadingIndex = this.chatMessages.length - 1;
@@ -4062,7 +4524,7 @@ struct Index {
     this.productId = record.productId;
     this.chatStatus = 'Loading history knowledge base...';
     try {
-      const backend = new BackendService();
+      const backend = new BackendService(getContext(this) as common.UIAbilityContext);
       const document: BackendDocumentResponse = await backend.getLatestDocumentByProduct(record.productId);
       this.backendKnowledgeDocumentId = document.id.toString();
       this.backendKnowledgeTextLength = document.text_length.toString();
@@ -4090,7 +4552,7 @@ struct Index {
     }
 
     this.uploadState = 'OCR 2/4 Sending image for local text recognition...';
-    const localOcrService = new MedicineImageOcrService();
+    const localOcrService = new MedicineImageOcrService(getContext(this) as common.UIAbilityContext);
     const localText = await localOcrService.extractTextFromImage(uri);
     if (localText.trim().length > 0) {
       console.info('[MediClearLocalOCR] OCR succeeded sourceType=' + sourceType);
@@ -4421,7 +4883,7 @@ struct Index {
       this.historyDetailStatus = 'Loading official leaflet details...';
     }
     try {
-      const backend = new BackendService();
+      const backend = new BackendService(getContext(this) as common.UIAbilityContext);
       let document: BackendDocumentResponse;
       try {
         document = await backend.getLatestLeafletByProduct(record.productId);

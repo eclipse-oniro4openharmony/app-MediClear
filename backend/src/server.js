@@ -13,6 +13,7 @@ import {
 } from './database.js';
 import { askDeepSeekWithKnowledgeBase } from './deepseekClient.js';
 import { extractPdfText, downloadPdf, sha256, splitIntoChunks } from './pdfTextExtractor.js';
+import { createAuthRouter, requireAuth } from './auth.js';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -82,6 +83,9 @@ app.get('/health', (_request, response) => {
     service: 'mediclear-backend'
   });
 });
+
+app.use('/api/auth', createAuthRouter());
+app.use('/api', requireAuth);
 
 app.post('/api/ocr', express.raw({ type: 'application/octet-stream', limit: '10mb' }), async (request, response, next) => {
   try {
@@ -1316,7 +1320,7 @@ app.use((error, _request, response, _next) => {
   if (error instanceof z.ZodError) {
     response.status(400).json({
       error: 'Invalid request',
-      details: error.errors
+      details: error.issues
     });
     return;
   }
