@@ -84,13 +84,19 @@ ohpm --version
 
 ### 1. Start the Backend
 
-Set the backend values in `backend/.env` before starting Docker. Keep this file local and do not commit it.
+From the repository root, initialize the local environment file and generate the auth secret if it is missing:
+
+```bash
+cd backend
+npm run gen-auth-secret
+```
+
+The command creates `backend/.env` from the example on first use and generates `AUTH_TOKEN_SECRET` only when it is empty. It preserves the existing secret on later deployments. Keep `.env` local and do not commit it.
 
 For account registration and password reset, use the SMTP values provided by your email service:
 
 ```env
 NODE_ENV=production
-AUTH_TOKEN_SECRET=<paste-the-generated-secret-here>
 AUTH_EMAIL_MODE=smtp
 SMTP_HOST=your-smtp-host
 SMTP_PORT=your-smtp-port
@@ -100,12 +106,15 @@ SMTP_PASSWORD=your-email-password-or-app-password
 SMTP_FROM=your-verified-sender-address
 ```
 
-Generate `AUTH_TOKEN_SECRET` with `openssl rand -hex 32` and keep it stable. The host, port, and secure setting depend on your provider; port `465` commonly uses implicit TLS (`true`), while port `587` commonly uses STARTTLS (`false`). For Gmail, use a Google App Password rather than the normal account password. Gmail example:
+`npm run gen-auth-secret` generates a 32-byte random secret and keeps it stable. The SMTP host, port, and secure setting depend on your provider; port `465` commonly uses implicit TLS (`true`), while port `587` commonly uses STARTTLS (`false`). For Gmail, use a Google App Password rather than the normal account password. Gmail example:
 
 ```env
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=465
 SMTP_SECURE=true
+SMTP_USER=your-gmail-address
+SMTP_PASSWORD=your-google-app-password
+SMTP_FROM=MediClear <your-gmail-address>
 ```
 
 For local testing without email delivery:

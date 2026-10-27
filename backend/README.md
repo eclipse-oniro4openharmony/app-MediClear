@@ -38,15 +38,37 @@ Backend returns recognized text; image data is not persisted
 
 ## Start With Docker
 
-Copy the example environment file if you want to customize ports or MongoDB settings:
+From the `backend` folder, initialize `.env` and generate the authentication secret when it is missing:
 
 ```bash
-cp .env.example .env
+npm run gen-auth-secret
 ```
 
-Configure the chat model in `backend/.env` if chat completion is needed. The OCR service is included in Compose and requires no API key.
+The command creates `.env` from `.env.example` on first use. It generates `AUTH_TOKEN_SECRET` only when empty and preserves it on later deployments. Keep `.env` local and do not commit it.
 
-Set a stable `AUTH_TOKEN_SECRET` with at least 32 random characters and configure the `SMTP_*` values before enabling user registration. For local-only testing, set `NODE_ENV=development` and `AUTH_EMAIL_MODE=console`; verification codes will be written to backend logs instead of sent by email. Do not use console email mode in production.
+For account registration and password reset, use the SMTP values provided by your email service. Gmail is an example, not a project-wide default:
+
+```text
+NODE_ENV=production
+AUTH_EMAIL_MODE=smtp
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=your-gmail-address
+SMTP_PASSWORD=your-google-app-password
+SMTP_FROM="MediClear <your-gmail-address>"
+```
+
+The SMTP host, port, and security mode depend on your provider; port 465 commonly uses implicit TLS (`true`), while port 587 commonly uses STARTTLS (`false`).
+
+For local-only testing without email delivery:
+
+```text
+NODE_ENV=development
+AUTH_EMAIL_MODE=console
+```
+
+Verification codes are written to backend logs in console mode. Do not use it in production. The OCR service is included in Compose and requires no API key.
 
 For the current DeepSeek setup:
 
