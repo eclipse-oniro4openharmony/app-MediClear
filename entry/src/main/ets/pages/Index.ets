@@ -643,8 +643,8 @@ struct Index {
       TextInput({ placeholder, text: value })
         .type(inputType)
         .passwordIcon({
-          onIconSrc: $r('app.media.bi_eye_slash'),
-          offIconSrc: $r('app.media.bi_eye')
+          onIconSrc: $r('app.media.bi_eye'),
+          offIconSrc: $r('app.media.bi_eye_slash')
         })
         .maxLength(maxLength)
         .fontSize(15)
