@@ -50,6 +50,10 @@ The app helps users understand official medicine labels, packages, leaflets, PDF
 | --- | --- |
 | <img src="screenshots/screenshot_20260810_150905_myapplicaiton.huawei.myapplication.jpg" width="220" alt="Medicine time dialog with Cancel and Confirm buttons" /> | <img src="screenshots/screenshot_20260810_150917_SCBDropdownPanel17.jpg" width="220" alt="System notification for medicine time" /> |
 
+| Account Sign-In | Email Verification Code |
+| --- | --- |
+| <img src="screenshots/screenshot_account_sign_in.jpg" width="220" alt="MediClear account sign-in screen" /> | <img src="screenshots/screenshot_email_verification_code.png" width="400" alt="MediClear email verification code message" /> |
+
 ## Deployment
 
 MediClear uses a HarmonyOS / OpenHarmony ArkTS mobile app plus a Docker backend for official leaflet extraction, local medicine-image OCR, knowledge-base storage, chat answers, and reminder planning.
