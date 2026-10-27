@@ -84,25 +84,57 @@ ohpm --version
 
 ### 1. Start the Backend
 
-Start the backend from the `backend` folder:
+Set the backend values in `backend/.env` before starting Docker. Keep this file local and do not commit it.
 
-```bash
-cd backend
-docker compose up --build
+For account registration and password reset, use the SMTP values provided by your email service:
+
+```env
+NODE_ENV=production
+AUTH_TOKEN_SECRET=<paste-the-generated-secret-here>
+AUTH_EMAIL_MODE=smtp
+SMTP_HOST=your-smtp-host
+SMTP_PORT=your-smtp-port
+SMTP_SECURE=true-or-false
+SMTP_USER=your-email-address
+SMTP_PASSWORD=your-email-password-or-app-password
+SMTP_FROM=your-verified-sender-address
 ```
 
-Configure the image OCR service in `backend/.env` if you want to override the defaults:
+Generate `AUTH_TOKEN_SECRET` with `openssl rand -hex 32` and keep it stable. The host, port, and secure setting depend on your provider; port `465` commonly uses implicit TLS (`true`), while port `587` commonly uses STARTTLS (`false`). For Gmail, use a Google App Password rather than the normal account password. Gmail example:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+```
+
+For local testing without email delivery:
+
+```env
+NODE_ENV=development
+AUTH_EMAIL_MODE=console
+```
+
+In console mode, verification and password-reset codes appear in backend logs. Do not use it in production.
+
+PaddleOCR and MongoDB are included in Docker Compose and require no extra API keys. Optional OCR overrides:
 
 ```text
 OCR_SERVICE_URL=http://paddleocr:8080
 OCR_TIMEOUT_MS=120000
 ```
 
-`OCR_SERVICE_URL` defaults to the `paddleocr` service in Docker Compose. The backend appends `/ocr` to this base URL, so do not include `/ocr` in the configured value. A custom service must be reachable from the backend container and implement the PaddleOCR-compatible `/ocr` request and response format. `OCR_TIMEOUT_MS` controls how long the backend waits for the OCR service before returning a timeout response.
+The default OCR URL is `http://paddleocr:8080`; the backend appends `/ocr`.
 
-Configure the backend LLM provider in `backend/.env`. The backend expects an OpenAI-compatible chat-completions endpoint, so it can use a local model, a self-hosted gateway, or a hosted provider.
+For the current DeepSeek setup:
 
-Example for a local Ollama model exposed through an OpenAI-compatible endpoint:
+```text
+LLM_API_KEY=your_deepseek_api_key
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
+```
+
+For a local Ollama model exposed through an OpenAI-compatible endpoint:
 
 ```text
 LLM_API_KEY=
@@ -110,21 +142,19 @@ LLM_BASE_URL=http://host.docker.internal:11434/v1
 LLM_MODEL=llama3.2:3b
 ```
 
-Example for a hosted OpenAI-compatible provider:
+Set the mobile app backend URL in `entry/src/main/ets/services/BackendConfig.ets`:
 
-```text
-LLM_API_KEY=your_api_key
-LLM_BASE_URL=https://your-provider.example.com/v1
-LLM_MODEL=your-model-name
-```
-
-Configure the mobile app backend URL in:
-
-```text
-entry/src/main/ets/services/BackendConfig.ets
+```ts
+export const MEDICLEAR_BACKEND_BASE_URL: string = 'http://<YOUR_COMPUTER_LAN_IP>:18080';
 ```
 
 For a physical phone, set the app backend URL to the computer's LAN address on the same Wi-Fi, for example `http://192.168.x.x:18080`. Windows Firewall or the host firewall must allow inbound traffic on port `18080`. Do not use `127.0.0.1` on a physical phone, because that points to the phone itself.
+
+After saving `backend/.env` and configuring the mobile app URL, start the backend from the `backend` folder:
+
+```bash
+docker compose up --build
+```
 
 ### 2. Install App Dependencies
 
